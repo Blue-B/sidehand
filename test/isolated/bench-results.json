@@ -1,0 +1,106 @@
+{
+ "apps": {
+  "winforms": {
+   "sidehand": {
+    "tokens": 250,
+    "refs": 27,
+    "ms": 559
+   },
+   "agent-desktop": {
+    "tokens": 1289,
+    "refs": 21,
+    "ms": 726
+   }
+  },
+  "wpf": {
+   "sidehand": {
+    "tokens": 221,
+    "refs": 26,
+    "ms": 544
+   },
+   "agent-desktop": {
+    "tokens": 968,
+    "refs": 17,
+    "ms": 867
+   }
+  },
+  "orders": {
+   "sidehand": {
+    "tokens": 161,
+    "refs": 18,
+    "ms": 539
+   },
+   "agent-desktop": {
+    "tokens": 740,
+    "refs": 11,
+    "ms": 739
+   }
+  },
+  "charmap": {
+   "sidehand": {
+    "tokens": 268,
+    "refs": 24,
+    "ms": 505
+   },
+   "agent-desktop": {
+    "tokens": 1069,
+    "refs": 17,
+    "ms": 814
+   }
+  },
+  "msinfo32": {
+   "sidehand": {
+    "tokens": 1215,
+    "refs": 105,
+    "ms": 618
+   },
+   "agent-desktop": {
+    "tokens": 4632,
+    "refs": 70,
+    "ms": 1849
+   }
+  },
+  "edge": {
+   "sidehand": {
+    "tokens": 436,
+    "refs": 37,
+    "ms": 626
+   },
+   "agent-desktop": {
+    "tokens": 8662,
+    "refs": 117,
+    "ms": 1114
+   }
+  },
+  "vscode": {
+   "sidehand": {
+    "tokens": 1925,
+    "refs": 169,
+    "ms": 844
+   },
+   "agent-desktop": {
+    "tokens": 7538,
+    "refs": 107,
+    "ms": 1519
+   }
+  }
+ },
+ "task": {
+  "sidehand": {
+   "ms": 4922,
+   "calls": 7,
+   "status": "e13 Text \"Order submitted: Blue-B Studio, 3 units to Jeju, express\"",
+   "activations": 0,
+   "tokens": 283,
+   "completed": true
+  },
+  "agent-desktop": {
+   "ms": 13399,
+   "calls": 7,
+   "status": "e13 Text \"Order submitted: Blue-B Studio, 3 units to , express\"",
+   "activations": 13,
+   "tokens": 2395,
+   "completed": false
+  }
+ }
+}
