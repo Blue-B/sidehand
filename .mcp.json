@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "sidehand": { "command": "npx", "args": ["-y", "github:Blue-B/sidehand", "mcp"] }
+  }
+}

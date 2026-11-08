@@ -1,0 +1,80 @@
+{
+  "name": "sidehand",
+  "version": "0.5.1",
+  "mcpName": "io.github.Blue-B/sidehand",
+  "description": "Let your AI agent use Windows apps while you keep working: reads and operates desktop controls without stealing your focus, from Windows or WSL. Zero dependencies.",
+  "keywords": [
+    "windows",
+    "wsl",
+    "ui-automation",
+    "computer-use",
+    "desktop-automation",
+    "ai-agent",
+    "screenshot",
+    "pi-package",
+    "pi-extension",
+    "pi-skill",
+    "claude-code",
+    "codex",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ocr",
+    "wpf"
+  ],
+  "license": "PolyForm-Shield-1.0.0",
+  "author": "Blue-B",
+  "type": "module",
+  "bin": {
+    "sidehand": "bin/sidehand.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "scripts",
+    "extensions",
+    "skills",
+    "README.md",
+    "README.ko.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/sidehand/index.ts"
+    ],
+    "skills": [
+      "./skills/sidehand"
+    ]
+  },
+  "scripts": {
+    "test": "node test/quote.mjs && node test/guard.mjs && node test/outdir.mjs && node test/mcp.mjs && node test/paths.mjs && node test/select-window.mjs && node test/ocr-expiry.mjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/isolated/run.ps1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blue-B/sidehand.git"
+  },
+  "homepage": "https://github.com/Blue-B/sidehand#readme",
+  "bugs": {
+    "url": "https://github.com/Blue-B/sidehand/issues"
+  },
+  "engines": {
+    "node": ">=18.3"
+  },
+  "os": [
+    "win32",
+    "linux"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.70.0",
+    "typebox": ">=0.34.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  }
+}

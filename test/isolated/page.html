@@ -1,0 +1,22 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Sidehand Web Test</title></head>
+<body style="font:16px Segoe UI">
+<h1>Web test</h1>
+<label>Name <input id="name" aria-label="Name"></label>
+<button id="apply">Apply</button>
+<label><input type="checkbox" id="enable"> Enable</label>
+<label>Mode <select id="mode" aria-label="Mode"><option>Alpha</option><option>Beta</option><option>Gamma</option></select></label>
+<div id="pad" role="button" aria-label="Pad" style="width:200px;height:80px;background:#ddd">Pad</div>
+<p>Status: <span id="status">idle</span></p>
+<p>Events: <span id="events"></span></p>
+<script>
+const ev = s => { const e = document.getElementById('events'); e.textContent += ' ' + s; document.title = 'Sidehand Web Test |' + e.textContent; };
+window.addEventListener('focus', () => ev('WINDOWFOCUS'));
+document.getElementById('apply').onclick = () => { document.getElementById('status').textContent = 'applied:' + document.getElementById('name').value; ev('apply'); };
+document.getElementById('name').oninput = () => ev('input');
+document.getElementById('name').onchange = () => ev('change');
+document.getElementById('enable').onchange = e => ev('check' + e.target.checked);
+document.getElementById('mode').onchange = e => ev('mode' + e.target.value);
+const pad = document.getElementById('pad');
+pad.ondblclick = () => ev('dblclick'); pad.oncontextmenu = e => { e.preventDefault(); ev('rightclick'); };
+pad.onwheel = () => ev('wheel'); pad.onmouseenter = () => ev('hover');
+</script></body></html>

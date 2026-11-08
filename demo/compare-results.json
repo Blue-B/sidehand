@@ -1,0 +1,48 @@
+{
+ "sidehand": {
+  "completed": true,
+  "foreground_changes": 0,
+  "note_without_keyboard_s": 0.0,
+  "cursor_moves": 0,
+  "task_s": 2.0,
+  "calls": 7,
+  "tokens": 277,
+  "errors": []
+ },
+ "agent-desktop": {
+  "completed": false,
+  "foreground_changes": 4,
+  "note_without_keyboard_s": 2.3,
+  "cursor_moves": 0,
+  "task_s": 2.7,
+  "calls": 10,
+  "tokens": 3411,
+  "errors": [
+   "select: Target is not actionable: supported_action (Select or Click is not available)",
+   "expand: Target is not actionable: supported_action (Expand is not available)",
+   "click: Invalid ref_id '@e0': expected @<snapshot_id>:e<N>"
+  ]
+ },
+ "terminator": {
+  "completed": true,
+  "foreground_changes": 8,
+  "note_without_keyboard_s": 67.9,
+  "cursor_moves": 2,
+  "task_s": 68.0,
+  "calls": 9,
+  "tokens": 2488,
+  "errors": [
+   "select_option: select_option: Element not found"
+  ]
+ },
+ "windows-mcp": {
+  "completed": true,
+  "foreground_changes": 1,
+  "note_without_keyboard_s": 49.7,
+  "cursor_moves": 6,
+  "task_s": 65.5,
+  "calls": 11,
+  "tokens": 13425,
+  "errors": []
+ }
+}
