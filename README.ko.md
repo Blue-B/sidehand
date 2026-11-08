@@ -93,6 +93,16 @@ $ sidehand act e12 click
 
 MCP와 pi에서는 같은 기능을 도구로 씁니다(`ui_tree`, `ui_ocr`, `ui_act` 등). 모든 명령과 옵션은 [docs/usage.md](docs/usage.md)(영어)에 있습니다.
 
+### 스크린샷 개인정보 가리기
+
+블로그 글, 이슈, 채팅에 스크린샷을 붙이기 전에 이메일, API 키, 얼굴을 가리세요. 에이전트에게 "이 스크린샷에서 이메일 가려줘"라고 말하면 대신 해 줍니다.
+
+![가짜 계정 화면의 원본과 검정, 모자이크, 흐림으로 가린 결과](assets/mask-example.png)
+
+```console
+$ sidehand mask shot.png "170,185,180,26;170,331,256,22" --style pixelate
+```
+
 ## 뒤에서 되는 것
 
 | | Win32, WinForms | WPF | Chrome, Edge | VS Code |

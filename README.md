@@ -93,6 +93,16 @@ $ sidehand act e12 click
 
 MCP and pi expose the same operations as tools (`ui_tree`, `ui_ocr`, `ui_act`, ...). Every command and option: [docs/usage.md](docs/usage.md).
 
+### Hide private info in screenshots
+
+Blur emails, API keys and faces before you paste a screenshot into a blog post, issue or chat. Your agent can do it for you: ask "hide the email in this screenshot".
+
+![A fake account page, original and masked with black, pixelate and blur](assets/mask-example.png)
+
+```console
+$ sidehand mask shot.png "170,185,180,26;170,331,256,22" --style pixelate
+```
+
 ## What works in the background
 
 | | Win32, WinForms | WPF | Chrome, Edge | VS Code |

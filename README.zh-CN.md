@@ -93,6 +93,16 @@ $ sidehand act e12 click
 
 MCP 和 pi 以工具形式提供同样的功能（`ui_tree`、`ui_ocr`、`ui_act` 等）。全部命令和选项见 [docs/usage.md](docs/usage.md)（英文）。
 
+### 隐藏截图中的隐私信息
+
+在把截图贴到博客、issue 或聊天之前，先遮住邮箱、API 密钥和人脸。也可以让智能体代劳，直接说“把这张截图里的邮箱遮住”。
+
+![一个虚构账户页面的原图，以及用黑块、像素化、模糊遮盖后的效果](assets/mask-example.png)
+
+```console
+$ sidehand mask shot.png "170,185,180,26;170,331,256,22" --style pixelate
+```
+
 ## 后台可以做什么
 
 | | Win32、WinForms | WPF | Chrome、Edge | VS Code |
