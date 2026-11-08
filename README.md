@@ -28,21 +28,21 @@ Sidehand lets Claude, Codex, Cursor or any MCP client read and operate Windows a
 
 ## Quick start
 
-You need Windows 10 or 11, Node 18.3+ and [Git for Windows](https://git-scm.com/download/win): the `github:` line below makes `npx` fetch Sidehand from GitHub, which needs Git. Add the server to your MCP client:
+You need Windows 10 or 11 and Node 18.3+. Add the server to your MCP client:
 
 ```json
 {
   "mcpServers": {
-    "sidehand": { "command": "npx", "args": ["-y", "github:Blue-B/sidehand", "mcp"] }
+    "sidehand": { "command": "npx", "args": ["-y", "sidehand", "mcp"] }
   }
 }
 ```
 
 | Client | Where |
 |---|---|
-| Claude Code | `claude mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Claude Code | `claude mcp add sidehand -- npx -y sidehand mcp` |
 | Cursor | `~/.cursor/mcp.json` |
-| Codex | `codex mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Codex | `codex mcp add sidehand -- npx -y sidehand mcp` |
 | Claude Desktop | Settings › Developer › Edit Config |
 | pi | `pi install git:github.com/Blue-B/sidehand` |
 
@@ -52,12 +52,12 @@ Or paste this to your AI agent and it sets itself up:
 
 ```text
 Install Sidehand (https://github.com/Blue-B/sidehand) for yourself: add an MCP server named "sidehand"
-with command "npx" and args ["-y", "github:Blue-B/sidehand", "mcp"] to your own MCP settings.
-If you are Claude Code, also run `npm install -g github:Blue-B/sidehand` and add the `sidehand guard`
+with command "npx" and args ["-y", "sidehand", "mcp"] to your own MCP settings.
+If you are Claude Code, also run `npm install -g sidehand` and add the `sidehand guard`
 PreToolUse hook from docs/setup.md in that repo. Then tell me whether I need to restart you.
 ```
 
-Run `sidehand doctor` (or `npx -y github:Blue-B/sidehand doctor`) to check your setup.
+Run `sidehand doctor` (or `npx -y sidehand doctor`) to check your setup.
 
 ## How it compares
 

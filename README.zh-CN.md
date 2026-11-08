@@ -28,21 +28,21 @@ Sidehand 让 Claude、Codex、Cursor 或任何 MCP 客户端读取并操作你�
 
 ## 快速开始
 
-需要 Windows 10 或 11、Node 18.3+ 和 [Git for Windows](https://git-scm.com/download/win)：下面的 `github:` 配置让 `npx` 从 GitHub 获取 Sidehand，这一步要用到 Git。把服务器加到你的 MCP 客户端：
+需要 Windows 10 或 11 和 Node 18.3+。把服务器加到你的 MCP 客户端：
 
 ```json
 {
   "mcpServers": {
-    "sidehand": { "command": "npx", "args": ["-y", "github:Blue-B/sidehand", "mcp"] }
+    "sidehand": { "command": "npx", "args": ["-y", "sidehand", "mcp"] }
   }
 }
 ```
 
 | 客户端 | 配置位置 |
 |---|---|
-| Claude Code | `claude mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Claude Code | `claude mcp add sidehand -- npx -y sidehand mcp` |
 | Cursor | `~/.cursor/mcp.json` |
-| Codex | `codex mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Codex | `codex mcp add sidehand -- npx -y sidehand mcp` |
 | Claude Desktop | 设置 › 开发者 › 编辑配置 |
 | pi | `pi install git:github.com/Blue-B/sidehand` |
 
@@ -52,12 +52,12 @@ Sidehand 让 Claude、Codex、Cursor 或任何 MCP 客户端读取并操作你�
 
 ```text
 帮你自己安装 Sidehand（https://github.com/Blue-B/sidehand）：在你的 MCP 设置里添加一个名为 "sidehand" 的
-MCP 服务器，command 为 "npx"，args 为 ["-y", "github:Blue-B/sidehand", "mcp"]。
-如果你是 Claude Code，还要运行 `npm install -g github:Blue-B/sidehand`，并添加该仓库 docs/setup.md 里的
+MCP 服务器，command 为 "npx"，args 为 ["-y", "sidehand", "mcp"]。
+如果你是 Claude Code，还要运行 `npm install -g sidehand`，并添加该仓库 docs/setup.md 里的
 `sidehand guard` PreToolUse 钩子。完成后告诉我是否需要重启你。
 ```
 
-用 `sidehand doctor`（或 `npx -y github:Blue-B/sidehand doctor`）检查环境。
+用 `sidehand doctor`（或 `npx -y sidehand doctor`）检查环境。
 
 ## 与其他方案对比
 

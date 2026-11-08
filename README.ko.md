@@ -28,21 +28,21 @@ Sidehand는 Claude, Codex, Cursor 같은 MCP 클라이언트가 지금 쓰고 �
 
 ## 시작하기
 
-Windows 10 또는 11, Node 18.3 이상, [Git for Windows](https://git-scm.com/download/win)가 필요합니다. 아래의 `github:` 설정은 `npx`가 GitHub에서 Sidehand를 받아 오는데, 이때 Git을 씁니다. MCP 클라이언트에 서버를 추가합니다.
+Windows 10 또는 11과 Node 18.3 이상이 필요합니다. MCP 클라이언트에 서버를 추가합니다.
 
 ```json
 {
   "mcpServers": {
-    "sidehand": { "command": "npx", "args": ["-y", "github:Blue-B/sidehand", "mcp"] }
+    "sidehand": { "command": "npx", "args": ["-y", "sidehand", "mcp"] }
   }
 }
 ```
 
 | 클라이언트 | 넣는 곳 |
 |---|---|
-| Claude Code | `claude mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Claude Code | `claude mcp add sidehand -- npx -y sidehand mcp` |
 | Cursor | `~/.cursor/mcp.json` |
-| Codex | `codex mcp add sidehand -- npx -y github:Blue-B/sidehand mcp` |
+| Codex | `codex mcp add sidehand -- npx -y sidehand mcp` |
 | Claude Desktop | 설정 › 개발자 › 구성 편집 |
 | pi | `pi install git:github.com/Blue-B/sidehand` |
 
@@ -52,12 +52,12 @@ AI 에이전트에게 아래 문장을 붙여 넣으면 에이전트가 직접 �
 
 ```text
 Sidehand(https://github.com/Blue-B/sidehand)를 너 자신에게 설치해 줘. 네 MCP 설정에 이름이 "sidehand"이고
-command가 "npx", args가 ["-y", "github:Blue-B/sidehand", "mcp"]인 MCP 서버를 추가해.
-네가 Claude Code라면 `npm install -g github:Blue-B/sidehand`도 실행하고 그 저장소의 docs/setup.md에 있는
+command가 "npx", args가 ["-y", "sidehand", "mcp"]인 MCP 서버를 추가해.
+네가 Claude Code라면 `npm install -g sidehand`도 실행하고 그 저장소의 docs/setup.md에 있는
 `sidehand guard` PreToolUse 훅도 추가해. 끝나면 내가 너를 다시 시작해야 하는지 알려 줘.
 ```
 
-설치 상태는 `sidehand doctor`(또는 `npx -y github:Blue-B/sidehand doctor`)로 확인합니다.
+설치 상태는 `sidehand doctor`(또는 `npx -y sidehand doctor`)로 확인합니다.
 
 ## 다른 도구와 비교
 

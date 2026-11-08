@@ -1,18 +1,14 @@
 # Troubleshooting
 
-Run `sidehand doctor` (or `npx -y github:Blue-B/sidehand doctor`) first. It checks Node, WSL interop, PowerShell, the execution policy (including Group Policy), the language mode, whether the shell is elevated, the engine and the installed OCR languages. It touches no window and exits 1 if a check fails.
+Run `sidehand doctor` (or `npx -y sidehand doctor`) first. It checks Node, WSL interop, PowerShell, the execution policy (including Group Policy), the language mode, whether the shell is elevated, the engine and the installed OCR languages. It touches no window and exits 1 if a check fails.
 
 ## The server does not start in Claude Desktop, Cursor or Codex on native Windows
 
-For example `spawn npx ENOENT`. On Windows `npx` is a `.cmd` script, and a program that starts it without a shell gets `ENOENT`. Use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "github:Blue-B/sidehand", "mcp"]` (in Codex TOML: `command = "cmd"`, `args = ["/c", "npx", ...]`). Claude Code starts plain `npx` fine. Full snippets are in [setup.md](setup.md#native-windows-claude-desktop-cursor-codex).
+For example `spawn npx ENOENT`. On Windows `npx` is a `.cmd` script, and a program that starts it without a shell gets `ENOENT`. Use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "sidehand", "mcp"]` (in Codex TOML: `command = "cmd"`, `args = ["/c", "npx", ...]`). Claude Code starts plain `npx` fine. Full snippets are in [setup.md](setup.md#native-windows-claude-desktop-cursor-codex).
 
 ## Codex reports a startup timeout
 
 Codex waits 10 seconds for a server to start. The first `npx` download can take longer; add `startup_timeout_sec = 60` under `[mcp_servers.sidehand]`.
-
-## `npx` or `npm install` cannot fetch `github:Blue-B/sidehand`
-
-Installing from GitHub needs Git. Install [Git for Windows](https://git-scm.com/download/win) and restart your client.
 
 ## `sidehand worker exited` or "running scripts is disabled on this system"
 
