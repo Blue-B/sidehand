@@ -115,7 +115,8 @@ try {
   $desk = 'sidehand-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
   [SidehandSandbox]::Open($desk)
   $scenario = if ($Bench) { 'bench.ps1' } else { 'scenario.ps1' }
-  if ($Bench) { & "$fw\csc.exe" /nologo /target:winexe "/out:$work\DemoApps.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll "$repo\demo\DemoApps.cs"; Copy-Item "$PSScriptRoot\page.html" $work }
+  if ($Bench) { & "$fw\csc.exe" /nologo /target:winexe "/out:$work\DemoApps.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll "$repo\demo\DemoApps.cs" }
+  Copy-Item "$PSScriptRoot\page.html" $work
   $cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\$scenario`" -Work `"$work`" -Repo `"$repo`""
   if ($ad) { $cmd += " -AgentDesktop `"$ad`"" }
   if ($cua) { $cmd += " -Cua `"$cua`"" }

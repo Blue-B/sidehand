@@ -45,6 +45,8 @@ public static class SidehandUia {
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+  [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
   const int RuntimeId = 30000, Bounds = 30001, ControlType = 30003, Name = 30005, Enabled = 30010, NativeHwnd = 30020,
     Password = 30019, Offscreen = 30022, ValueAvail = 30043, ValueValue = 30045, ToggleAvail = 30041,
     ToggleStateId = 30086, ExpandAvail = 30028, ExpandStateId = 30070, SelectAvail = 30036, Selected = 30079;
@@ -590,8 +592,15 @@ public static class SidehandUia {
     var fg = new Foreground();
     var root = GetAncestor(hwnd, 2 /* GA_ROOT */);
     if (root == IntPtr.Zero) root = hwnd;
-
-    string done = posted ? null : ViaMessage(el, action, value), via = "window message";
+    // The user agreed to this window taking the foreground: focus keeps it, press borrows it for the keys.
+    bool consent = action == "focus" || (action == "press" && allowForeground), borrowed = false;
+    // An app can bring itself forward while it handles the action: an explicit SetForegroundWindow
+    // ignores WS_EX_NOACTIVATE. The watch hands the foreground back within milliseconds.
+    // (Not LockSetForegroundWindow, as launch does: with it the hidden-desktop `hover` case fails.)
+    if (!consent) fg.Watch(targetPid);
+    string done, via = "window message";
+    try {
+    done = posted ? null : ViaMessage(el, action, value);
     bool wpf = !drawn && Pointer.Contains(action) && el.CurrentFrameworkId == "WPF";
     if (done == null) {
       via = posted && !wpf ? "posted input" : "UI Automation";
@@ -616,8 +625,13 @@ public static class SidehandUia {
             if (kh == root) {
               // Windowless controls (WPF, Chromium) take keys only while their window has the focus.
               // WPF does not expose its default (IsDefault) button to UI Automation, so Enter in a text box cannot be mapped.
-              if (!allowForeground) throw new InvalidOperationException("this control takes keys only while its window is focused (Enter works without focus only on a button or link); use type for text, or pass the allow-foreground flag (user consent)");
-              el.SetFocus();
+              if (allowForeground) { el.SetFocus(); borrowed = true; }
+              // A text field in a Chromium window (browsers, Electron) is the exception: a posted click
+              // puts the caret in it, and the page then takes posted keys while its window stays inactive.
+              else if (el.CurrentFrameworkId == "Chrome" && el.CachedControlType == 50004 /* Edit */ && !Flag(el, Offscreen)) {
+                ViaPointer(Center(el), root, "click", null, cachePath);
+                Thread.Sleep(150);
+              } else throw new InvalidOperationException("this control takes keys only while its window is focused (without focus: Enter on a button or link, and any keys in a visible text field of a browser or Electron window); use type for text, or pass the allow-foreground flag (user consent)");
             }
             done = Press(kh, value);
           }
@@ -631,15 +645,18 @@ public static class SidehandUia {
     }
 
     Thread.Sleep(150); // let the app react before reading back
+    } finally { fg.StopWatch(); }
     string after;
     if (drawn) after = refId + " \"" + text + "\" at " + spot.X + "," + spot.Y;
     else try { after = Describe(el.BuildUpdatedCache(Request()), refId, false) ?? refId; } catch (COMException) { after = refId + " (element gone after action)"; }
     var result = "ok " + done + " via " + via + ": " + after;
     var fgAfter = GetForegroundWindow(); uint fgPid; GetWindowThreadProcessId(fgAfter, out fgPid);
-    if (fgAfter != fg.Before && fgPid == targetPid) {
-      if (!allowForeground && fg.GiveBack(true)) result += "\nnote: the target app came forward; the user's window was put back in front";
-      else result += "\nWARNING: the target app came to the foreground; the user's keystrokes now go to it";
-    }
+    bool front = fgAfter != fg.Before && fgPid == targetPid;
+    // Only focus keeps the foreground; a press that borrowed it returns it once the keys are in.
+    if (front && action != "focus" && fg.GiveBack(true)) { fg.Returned++; front = false; }
+    if (front) result += "\nWARNING: the target app came to the foreground; the user's keystrokes now go to it";
+    else if (fg.Returned > 0 && borrowed) result += "\nnote: the window had the foreground for the keys; the user's window was put back in front";
+    else if (fg.Returned > 0) result += "\nnote: the target app came forward while handling this" + (fg.Ms >= 0 ? " (about " + fg.Ms + " ms)" : "") + "; the user's window was put back in front";
     return result;
   }
 
@@ -648,11 +665,42 @@ public static class SidehandUia {
   // that came forward is the app being operated or launched, so the user (who may be typing in
   // their own window) did not switch to it; otherwise only when they have not touched the input since.
   public sealed class Foreground {
-    public readonly IntPtr Before;
+    public IntPtr Before;
     public readonly uint Since;
+    public int Returned;   // times the foreground was handed back
+    public long Ms = -1;   // how long the app had it before the watch handed it back
+    Thread watch; volatile bool stop;
     public Foreground() : this(GetForegroundWindow(), GetTickCount()) { }
     // The background launch watcher continues the launch call's watch.
     public Foreground(IntPtr before, uint since) { Before = before; Since = since; }
+
+    // Checks the real foreground every millisecond while an action runs. A window of the operated
+    // app that comes forward is the app's doing: hand the foreground back at once, not when the
+    // action ends. Any other window is where the user went, and becomes the one to hand back to.
+    public void Watch(uint appPid) {
+      uint own; GetWindowThreadProcessId(Before, out own);
+      if (Before == IntPtr.Zero || own == appPid) return; // the user is working in that app
+      watch = new Thread(() => {
+        timeBeginPeriod(1); // Sleep(1) lasts up to 15 ms otherwise
+        try {
+          while (!stop) {
+            var now = GetForegroundWindow(); uint pid;
+            if (now != IntPtr.Zero && now != Before) {
+              GetWindowThreadProcessId(now, out pid);
+              if (pid != appPid) Before = now;
+              else {
+                var t = System.Diagnostics.Stopwatch.StartNew();
+                if (!GiveBack(true)) break; // not possible (an elevated window): the caller warns
+                Returned++; Ms = t.ElapsedMilliseconds + 1;
+              }
+            }
+            Thread.Sleep(1);
+          }
+        } finally { timeEndPeriod(1); }
+      });
+      watch.IsBackground = true; watch.Start();
+    }
+    public void StopWatch() { stop = true; if (watch != null) watch.Join(); }
 
     public bool GiveBack(bool ours) {
       var now = GetForegroundWindow();

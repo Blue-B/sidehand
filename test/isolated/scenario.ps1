@@ -34,7 +34,19 @@ $cuaSock = '\\.\pipe\sidehand-test-cua'
 if ($Cua) { Start-Process $Cua -ArgumentList "serve --socket $cuaSock" -WindowStyle Hidden; Start-Sleep 3 }
 function CuaCall([string]$tool, [hashtable]$a) { $ErrorActionPreference = 'Continue'; ((ConvertTo-Json $a -Compress) | & $Cua call $tool --socket $cuaSock 2>&1 | ForEach-Object { "$_" }) -join "`n" }
 
+$edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+function Start-Web([int]$n) {
+  # Its own profile each time: a browser killed a moment ago still holds the previous one.
+  $p = Start-Process $edge -ArgumentList "--user-data-dir=`"$Work\edge\$n`" --no-first-run --no-default-browser-check --force-renderer-accessibility --new-window `"file:///$($Work.Replace('\','/'))/page.html`"" -PassThru
+  for ($i = 0; $i -lt 40 -and (Web-Title) -notlike 'window: Sidehand Web Test*'; $i++) { Start-Sleep -Milliseconds 500 }
+  Start-Sleep -Milliseconds 1500
+  $p
+}
+# The browser's window is not its process's main window: read the title off sidehand's own header line.
+function Web-Title { ((Sidehand @('-Op', 'tree', '-Title', 'Sidehand Web Test', '-Filter', '(none)')) -split "`n")[0] }
+
 $apps = @{
+  Web      = @{ title = 'Sidehand Web Test' }
   WinForms = @{ exe = 'TestWinForms.exe'; title = 'Sidehand Test WinForms' }
   WPF      = @{ exe = 'TestWpf.exe'; title = 'Sidehand Test WPF target' }
   Drawn    = @{ exe = 'TestWinForms.exe'; title = 'Sidehand Test Drawn' }
@@ -88,6 +100,15 @@ $cases = @(
   @('sidehand', 'WinForms', 'window move', '', 'window:move', '30,40', 'moved'),
   @('sidehand', 'WinForms', 'launch an app', '', 'launch', '', 'shown')
 )
+# A page in Edge, when installed. The page puts its events in the window title; they show that the
+# action took effect. Whether a browser window was activated cannot be told on a hidden desktop.
+if ($edge) {
+  $cases += @(
+    @('sidehand', 'Web', 'press in a text field', 'Edit "Name"', 'press', 'h i', 'web input'),
+    # Keys go in after a posted click on the element: fine for a text field, but it would press a button.
+    @('sidehand', 'Web', 'press on a button refused', 'Button "Apply"', 'press', 'a', 'web apply')
+  )
+}
 if ($AgentDesktop) {
   $cases += @(
     @('agent-desktop', 'WinForms', 'type', 'textfield|', 'set-value', 'hello', 'text len=5'),
@@ -116,7 +137,7 @@ foreach ($c in $cases) {
   $tool, $appName, $label, $find, $action, $value, $expect = $c
   $app = $apps[$appName]
   $log = Join-Path $Work "case$n.log"
-  $target = Start-App $app.exe $(if ($label -like '*another window*') { 'twin' } elseif ($appName -eq 'Drawn') { 'drawn' } else { 'target' }) $log
+  $target = if ($appName -eq 'Web') { Start-Web $n } else { Start-App $app.exe $(if ($label -like '*another window*') { 'twin' } elseif ($appName -eq 'Drawn') { 'drawn' } else { 'target' }) $log }
   Start-Sleep -Milliseconds 700
   $decoy = Start-App 'TestWinForms.exe' 'decoy' $log
   Start-Sleep -Milliseconds 800
@@ -170,6 +191,9 @@ foreach ($c in $cases) {
            else { Native $AgentDesktop @($action, $ref) }
     $ms = $sw.ElapsedMilliseconds
     Start-Sleep -Milliseconds 500 # late activation messages still land inside this case
+    if ($appName -eq 'Web') {
+      if ((Web-Title) -match '\|(.*?)( - |$)') { $Matches[1].Trim() -split ' +' | Where-Object { $_ } | ForEach-Object { Add-Content -Encoding UTF8 $log "$(Tick)`ttarget`tweb $_" } }
+    }
     $results.Add([pscustomobject]@{ n = $n; tool = $tool; app = $appName; label = $label; expect = $expect; t0 = $t0; t1 = (Tick); ms = $ms; log = $log; output = $out.Trim() })
   } finally {
     foreach ($p in $target, $decoy) { try { $p.Kill() } catch {} }

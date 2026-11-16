@@ -165,7 +165,8 @@ export default function sidehand(pi: ExtensionAPI): void {
 			"click | type (replace text) | check | uncheck | select (or value=<item> inside a list/combo) | expand | collapse | scroll (into view) | " +
 			"right-click | double-click | hover | wheel (value 'down 3') | drag (value=<ref> or 'dx,dy') | press (value 'Enter', 'ctrl+a', 'Down Down Enter'). " +
 			"Classic controls get window messages, others UI Automation or posted input; the result warns if the app still came forward. " +
-			"focus, and press on WPF/browser controls (except Enter on a button or link), take the user's foreground: only with allow_foreground=true after the user agreed. " +
+			"press works in the background on classic controls and on a visible text field of a browser or Electron window. " +
+			"focus, and press on other WPF/browser controls (except Enter on a button or link), take the user's foreground: only with allow_foreground=true after the user agreed; press hands the foreground back once the keys are in, focus keeps it. " +
 			"If an action fails, never fall back to moving the real mouse or bringing the window forward yourself; tell the user. " +
 			"Refs expire when the tree is read again.",
 		parameters: Type.Object({

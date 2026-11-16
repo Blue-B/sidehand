@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `press` on a visible text field of a browser or Electron window (Chrome, Edge, VS Code and other Chromium apps) no longer needs `allow_foreground`: a posted click puts the caret in the field, and the page then takes posted keys while its window stays inactive. On the real desktop `press "h i Backspace"` left `h` in an Edge text field with no foreground change. Other browser controls are still refused, since the click would press them. New hidden-desktop cases `press in a text field` and `press on a button refused` (run when Edge is installed).
+
+### Changed
+
+- An app that brings itself forward while it handles an action was put back only when the action ended, 150 to 400 ms later. `act` now checks the foreground every millisecond while the action runs and hands it back at once: 35 ms after a test app took it on the real desktop. The result says how long (`note: the target app came forward while handling this (about N ms)`). A window the user switches to during the action is left alone and becomes the one to hand back to.
+- `press` with `allow_foreground` kept the app in front afterwards. It now hands the foreground back once the keys are in; only `focus` keeps it. `allow_foreground` on any other action no longer skips putting the user's window back.
+
 ## 0.5.1 (2026-11-08)
 
 ### License

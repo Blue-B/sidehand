@@ -22,7 +22,7 @@ Act (refs come from the last tree/wait/ocr); nothing here takes your focus unles
   sidehand act <ref> <action> [value] [--allow-foreground]
       click | type <text> | check | uncheck | select [item] | expand | collapse | scroll
       right-click | double-click | hover | wheel [up|down N] | drag <ref|dx,dy> | press <keys>
-        press: Enter, Tab, "Down Down Enter", ctrl+a ... (WPF/browser controls need --allow-foreground, except Enter on a button or link)
+        press: Enter, Tab, "Down Down Enter", ctrl+a ... (WPF/browser controls need --allow-foreground, except Enter on a button or link and keys in a browser text field)
       OCR refs (t3) take click, double-click, right-click, hover, wheel and drag (to a t-ref or dx,dy), at the text's center
       focus: takes your foreground window, so it needs --allow-foreground
 Windows and apps

@@ -28,9 +28,9 @@ Outside pi, the same operations are the `sidehand` CLI (`sidehand --help`; `side
 
 - Reading (`tree`, `wait`, list, capture of a visible window) never changes focus.
 - Actions on classic Win32 and WinForms text boxes, buttons, checkboxes, lists and combo boxes go `via window message` and never activate the window.
-- Other controls (WPF, UWP, tree items) go `via UI Automation` with the target marked non-activatable, which kept WinForms and WPF apps in the background in testing. If the app being operated still comes forward, sidehand puts the user's window back in front, even while they type, and the result ends with `note: ... came forward; the user's window was put back in front`. If that is not possible, it ends with `WARNING: the target app came to the foreground`: tell the user and do not repeat that action while they are busy. `sidehand_launch` returns once the window is there and keeps watching for 3 s more in the background, putting the user's window back if the new app comes forward late.
+- Other controls (WPF, UWP, tree items) go `via UI Automation` with the target marked non-activatable, which kept WinForms and WPF apps in the background in testing. An app can still bring itself forward while it handles an action. Sidehand checks the foreground every millisecond while the action runs and puts the user's window back in front, even while they type (35 ms after the app took it, in a test on the real desktop); the result ends with `note: the target app came forward while handling this (about N ms); the user's window was put back in front`. Tell the user when you see that note, since a key they pressed in that moment may be lost. If that is not possible, it ends with `WARNING: the target app came to the foreground`: tell the user and do not repeat that action while they are busy. `sidehand_launch` returns once the window is there and keeps watching for 3 s more in the background, putting the user's window back if the new app comes forward late.
 - WPF apps ignore background mouse messages. On WPF, `wheel` scrolls the nearest scrollable list or view and `double-click` runs the element's default action (Invoke: a grid row starts editing); both say so in the result, and an app's own double-click handler does not run. Right-click, hover and drag on WPF, and HTML `<select>` drop-downs, are refused or fail: tell the user instead of retrying.
-- `press` on WPF or browser controls needs focus, so it is refused without `allow_foreground=true`, except `press Enter` on a button or link, which presses it (`as the element's default action`). Enter in a WPF text box is refused (WPF does not expose its default button); `click` the button instead, and use `type` for text.
+- `press` on a visible text field of a browser or Electron window works in the background: a posted click puts the caret in the field, then the keys are posted. `press` on other WPF or browser controls needs focus, so it is refused without `allow_foreground=true`, except `press Enter` on a button or link, which presses it (`as the element's default action`). With `allow_foreground=true` the window has the foreground only for the keys: sidehand puts the user's window back afterwards (`note: the window had the foreground for the keys`), so send all the keys of one step in one `press`. Enter in a WPF text box is refused (WPF does not expose its default button); `click` the button instead, and use `type` for text.
 - Clicks on OCR refs are posted mouse messages: the real cursor does not move and the window is not activated. Games that read the real mouse (DirectInput, raw input) and apps that check what is under the real cursor ignore them; the result still says `ok`, so read the window again (`sidehand_ui_ocr` or `sidehand_capture`) to confirm, and tell the user instead of retrying.
 - `focus` and `bring_to_front` take the foreground by design: the tool refuses `focus` without `allow_foreground=true` and refuses to capture a minimized window without `bring_to_front=true`. Pass them only after the user agreed.
 - Minimized windows cannot be operated or read by OCR: run `sidehand_window` `restore` first. It puts the window back behind the user's windows and does not activate it.
@@ -43,6 +43,51 @@ Outside pi, the same operations are the `sidehand` CLI (`sidehand --help`; `side
 3. `sidehand_ui_act` on the ref; read the returned line to confirm the new value or state.
 4. After anything that loads, `sidehand_ui_wait` for the expected text, then act on the fresh refs it prints.
 5. When the tree is nearly empty (games, custom-drawn apps), `sidehand_ui_ocr` and act on its t-refs. Use `sidehand_capture` when the visual layout matters or OCR finds no text. Resize big captures (`max_w=1280`) before reasoning over them.
+
+## Examples
+
+Refs below are illustrative; use the ones the tree prints.
+
+"Write today's to-do list in Notepad while I keep gaming."
+
+```
+sidehand_list_windows                                        -> "Untitled - Notepad"
+sidehand_ui_tree  title="Notepad" filter="Edit"             -> e4 Edit ""
+sidehand_ui_act   ref=e4 action=type value="1. Reply to mail\n2. Book dentist"
+```
+
+Read the returned line: it shows the new text. The game keeps the foreground.
+
+"Turn on Bluetooth in Settings."
+
+```
+sidehand_launch   app="ms-settings:bluetooth"
+sidehand_ui_wait  title="Settings" text="Bluetooth"         -> e17 ToggleButton "Bluetooth" off
+sidehand_ui_act   ref=e17 action=check
+```
+
+Settings is UWP, so this goes via UI Automation. If the result ends with the `came forward` note, tell the user.
+
+"Click Start in the game launcher." The tree shows only a pane, so read it with OCR:
+
+```
+sidehand_ui_ocr   title="Launcher"                          -> t5 "START" @1610,940
+sidehand_ui_act   ref=t5 action=click
+sidehand_ui_ocr   title="Launcher"                          -> confirm the screen changed
+```
+
+If nothing changed, the launcher reads the real mouse: tell the user rather than retrying.
+
+"Send me a screenshot of the Discord window, but hide the names."
+
+```
+sidehand_capture  mode=window title="Discord" out="C:\\tmp\\d.png"
+sidehand_info     in="C:\\tmp\\d.png"                       -> 1920x1080
+sidehand_mask     in="C:\\tmp\\d.png" style=pixelate regions=[{x:0,y:60,w:240,h:1020}]
+sidehand_resize   in="C:\\tmp\\d.png" max_w=1280
+```
+
+Ask which parts to hide before the image leaves the machine.
 
 ## Screenshots and privacy
 
