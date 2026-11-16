@@ -133,7 +133,7 @@ switch ($Op) {
     $fg = New-Object 'SidehandUia+Foreground'
     $appPid = [SidehandUia]::Launch($Value, $Arguments)
     $new = $null
-    $gaveBack = $false
+    $gaveBack = [SidehandUia]::LaunchGaveBack -gt 0
     $appPath = try { (Get-Command $Value -ErrorAction Stop).Source } catch { $Value }
     # Many apps bring themselves forward a moment after their window shows: a hidden PowerShell keeps
     # watching until 3 s after that, so this call returns once the window is there. Started now so it is

@@ -100,11 +100,13 @@ $cases = @(
   @('sidehand', 'WinForms', 'window move', '', 'window:move', '30,40', 'moved'),
   @('sidehand', 'WinForms', 'launch an app', '', 'launch', '', 'shown')
 )
-# A page in Edge, when installed. The page puts its events in the window title; they show that the
-# action took effect. Whether a browser window was activated cannot be told on a hidden desktop.
+# A page in Edge, when installed. The page puts its events in the window title, and the field's value
+# is read back: they show that the action took effect. Whether a browser window was activated cannot
+# be told on a hidden desktop.
 if ($edge) {
   $cases += @(
-    @('sidehand', 'Web', 'press in a text field', 'Edit "Name"', 'press', 'h i', 'web input'),
+    # Every key arrives, a combination included: only then is the value "c".
+    @('sidehand', 'Web', 'press in a text field', 'Edit "Name"', 'press', 'a b ctrl+a c', 'web value=c'),
     # Keys go in after a posted click on the element: fine for a text field, but it would press a button.
     @('sidehand', 'Web', 'press on a button refused', 'Button "Apply"', 'press', 'a', 'web apply')
   )
@@ -192,6 +194,7 @@ foreach ($c in $cases) {
     $ms = $sw.ElapsedMilliseconds
     Start-Sleep -Milliseconds 500 # late activation messages still land inside this case
     if ($appName -eq 'Web') {
+      if ($out -match 'value="([^"]*)"') { Add-Content -Encoding UTF8 $log "$(Tick)`ttarget`tweb value=$($Matches[1])" }
       if ((Web-Title) -match '\|(.*?)( - |$)') { $Matches[1].Trim() -split ' +' | Where-Object { $_ } | ForEach-Object { Add-Content -Encoding UTF8 $log "$(Tick)`ttarget`tweb $_" } }
     }
     $results.Add([pscustomobject]@{ n = $n; tool = $tool; app = $appName; label = $label; expect = $expect; t0 = $t0; t1 = (Tick); ms = $ms; log = $log; output = $out.Trim() })
