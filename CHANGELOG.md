@@ -4,7 +4,7 @@
 
 ### Added
 
-- `press` on a visible text field of a browser or Electron window (Chrome, Edge, VS Code and other Chromium apps) no longer needs `allow_foreground`: a posted click puts the caret in the field, and the page then takes posted keys while its window stays inactive. On the real desktop `press "a b ctrl+a c"` left `c` in an Edge text field with no foreground change. Each `press` clicks the middle of the field first, so the caret moves there. If the click did not put the caret in the field (a banner or dialog covers it), no key is sent and the call is refused. Other browser controls are still refused, since the click would press them. New hidden-desktop cases `press in a text field` and `press on a button refused` (run when Edge is installed).
+- `press` on a visible text field of a browser or Electron window (Chromium: Chrome, Edge, Electron apps; tested in Edge) no longer needs `allow_foreground`: a posted click puts the caret in the field, and the page then takes posted keys while its window stays inactive. On the real desktop `press "a b ctrl+a c"` left `c` in an Edge text field with no foreground change. Each `press` clicks the middle of the field first, so the caret moves there. If the click did not put the caret in the field (a banner or dialog covers it), no key is sent and the call is refused. Other browser controls are still refused, since the click would press them. New hidden-desktop cases `press in a text field` and `press on a button refused` (run when Edge is installed).
 
 ### Changed
 
