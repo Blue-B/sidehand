@@ -110,7 +110,7 @@ $ sidehand mask shot.png "170,185,180,26;170,331,256,22" --style pixelate
 | Type, click, check, select, expand | ✅ | ✅ | ✅ except `<select>` | ✅ click |
 | Wheel, double-click | ✅ | ✅ through UI Automation | ✅ | - |
 | Right-click, hover, drag | ✅ | ❌ | ✅ | - |
-| Keys and shortcuts | ✅ | Enter on a button or link; others with consent | Enter on a button or link; others with consent | with consent |
+| Keys and shortcuts | ✅ | Enter on a button or link; others with consent | keys in text fields, Enter on a button or link; others with consent | with consent |
 
 "With consent" means `--allow-foreground`, your permission to take the foreground.
 Games that read raw mouse input ignore posted clicks, but `capture` and `ocr` still work.

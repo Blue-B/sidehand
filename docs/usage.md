@@ -31,7 +31,7 @@ MCP exposes the same operations as tools: `list_windows`, `list_monitors`, `ui_t
 | Type, click, check, select, expand | ✅ | ✅ | ✅ except `<select>` | ✅ click |
 | Wheel, double-click | ✅ | ✅ through UI Automation | ✅ | - |
 | Right-click, hover, drag | ✅ | ❌ | ✅ | - |
-| Keys and shortcuts | ✅ | Enter on a button or link; others with consent | text fields, Enter on a button or link; others with consent | with consent |
+| Keys and shortcuts | ✅ | Enter on a button or link; others with consent | keys in text fields, Enter on a button or link; others with consent | with consent |
 
 WPF ignores mouse messages that do not come from the real mouse, so on WPF a wheel scrolls the nearest scrollable list or view through UI Automation, and a double-click runs the element's default action (Invoke: a grid row starts editing, a button clicks); an app's own double-click handler does not run. Right-click, hover and drag on WPF are refused: UI Automation's context-menu call brings the window forward. WPF and browser pages take keys only while focused, so keys need `--allow-foreground`, except Enter on a button or link, which presses it, and keys in a visible text field of a browser or Electron window, which go in after a posted click on the field. With `--allow-foreground` the window has the foreground only for the keys; your window is put back afterwards. WPF does not tell UI Automation which button is the default, so Enter in a text box needs consent too.
 
