@@ -45,6 +45,8 @@ class TestWinForms : Form {
     var name = new TextBox { Name = "NameBox", AccessibleName = "Name", Location = new Point(10, 10), Width = 200 };
     var apply = new Button { Name = "ApplyBtn", Text = "Apply", Location = new Point(220, 8) };
     var status = new Label { Name = "Status", Text = "idle", Location = new Point(310, 12), AutoSize = true };
+    // Opens a modal dialog, as Save or Open does: the click handler does not return until it closes.
+    var ask = new Button { Name = "AskBtn", Text = "Ask", Location = new Point(220, 38) };
     var chk = new CheckBox { Name = "EnableChk", Text = "Enable", Location = new Point(10, 40) };
     var combo = new ComboBox { Name = "ModeCombo", AccessibleName = "Mode", DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(10, 70), Width = 150 };
     combo.Items.AddRange(new object[] { "Alpha", "Beta", "Gamma" });
@@ -71,6 +73,7 @@ class TestWinForms : Form {
 
     apply.Click += (s, e) => { status.Text = "applied:" + name.Text; Log("apply.click"); };
     far.Click += (s, e) => Log("far.click");
+    ask.Click += (s, e) => { Log("ask.click"); MessageBox.Show(this, "Save changes?", "Sidehand Test Dialog", MessageBoxButtons.YesNo); };
     name.TextChanged += (s, e) => { Log("text len=" + name.Text.Length); Log("text=" + name.Text); };
     chk.CheckedChanged += (s, e) => Log("check " + chk.Checked);
     combo.SelectedIndexChanged += (s, e) => Log("combo " + combo.SelectedItem);
@@ -80,12 +83,12 @@ class TestWinForms : Form {
     tree.AfterExpand += (s, e) => Log("tree.expand");
     tree.AfterCollapse += (s, e) => Log("tree.collapse");
     panel.Scroll += (s, e) => Log("panel.scroll");
-    foreach (Control c in new Control[] { name, apply, chk, combo, list, tree, far }) {
+    foreach (Control c in new Control[] { name, apply, ask, chk, combo, list, tree, far }) {
       var cc = c;
       c.GotFocus += (s, e) => Log("focus+ " + cc.Name);
       c.LostFocus += (s, e) => Log("focus- " + cc.Name);
     }
-    Controls.AddRange(new Control[] { name, apply, status, chk, combo, list, tree, panel, pad });
+    Controls.AddRange(new Control[] { name, apply, ask, status, chk, combo, list, tree, panel, pad });
   }
 }
 

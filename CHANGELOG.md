@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `click` on a Win32 or WinForms button whose handler opens a modal dialog (Save, Open, a message box) clicked it, but waited until the dialog closed and after 5 s failed with "the app did not answer the window message (hung, or running as administrator)". It now returns once the app's window is disabled by the dialog and names the dialog: `ok click (it opened the modal window "Save As")`. New hidden-desktop case `click opening a modal dialog` (a message box: 0.8 s, was 6.1 s and an error); a WinForms SaveFileDialog was checked the same way.
+
 ## 0.5.2 (2026-11-18)
 
 ### Added

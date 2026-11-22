@@ -44,6 +44,10 @@ public static class SidehandUia {
   [DllImport("kernel32.dll")] static extern uint GetTickCount();
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+  delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumThreadWindows(uint tid, EnumWindowsProc f, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
   [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
@@ -351,6 +355,39 @@ public static class SidehandUia {
     Send(GetParent(h), 0x0111 /* WM_COMMAND */, new IntPtr((code << 16) | (GetDlgCtrlID(h) & 0xFFFF)), h);
   }
 
+  // A button whose handler opens a modal dialog (Save, Open, a message box) does not answer BM_CLICK
+  // until the dialog closes. Send it from another thread and stop waiting once the window is disabled:
+  // every modal loop disables its owner. The result names the dialog, so the agent can read it next.
+  static string ClickButton(IntPtr h) {
+    var root = GetAncestor(h, 2 /* GA_ROOT */);
+    Exception failed = null;
+    var t = new Thread(() => { try { Send(h, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero); } catch (Exception e) { failed = e; } });
+    t.IsBackground = true; t.Start();
+    while (!t.Join(20)) {
+      if (IsWindowEnabled(root)) continue;
+      var dialog = ModalOf(root);
+      return dialog == null ? "click (it opened a modal window)" : "click (it opened the modal window \"" + Short(dialog, 60) + "\")";
+    }
+    if (failed != null) throw failed;
+    return "click";
+  }
+
+  // The title of the visible window that `root` owns on its own thread, waited for up to 2 s (a dialog
+  // disables its owner before it shows itself; a file dialog takes a moment).
+  static string ModalOf(IntPtr root) {
+    uint pid, tid = GetWindowThreadProcessId(root, out pid);
+    for (int i = 0; i < 100; i++) {
+      string found = null;
+      EnumThreadWindows(tid, (w, l) => {
+        if (w == root || !IsWindowVisible(w) || GetWindow(w, 4 /* GW_OWNER */) != root) return true;
+        var sb = new StringBuilder(256); GetWindowText(w, sb, 256); found = sb.ToString(); return false;
+      }, IntPtr.Zero);
+      if (found != null) return found;
+      Thread.Sleep(20);
+    }
+    return null;
+  }
+
   // Returns null when the element is not a classic control, so the caller falls back to UIA.
   static string ViaMessage(IUIAutomationElement el, string action, string value) {
     var hv = P(el, NativeHwnd);
@@ -364,10 +401,7 @@ public static class SidehandUia {
       Send(h, 0x000C /* WM_SETTEXT */, IntPtr.Zero, value ?? "");
       return "set text";
     }
-    if (action == "click" && button) {
-      Send(h, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero);
-      return "click";
-    }
+    if (action == "click" && button) return ClickButton(h);
     var tog = Pattern<IUIAutomationTogglePattern>(el, PToggle);
     if ((action == "check" || action == "uncheck") && button && tog != null) {
       // Read the state through UIA (owner-drawn WinForms checkboxes ignore BM_GETCHECK); reading never activates.
