@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.5.3 (2026-11-23)
 
 ### Fixed
 
-- `click` on a Win32 or WinForms button whose handler opens a dialog (Save, Open, a message box) clicked it, but waited until the dialog closed and after 5 s failed with "the app did not answer the window message (hung, or running as administrator)". It now returns as soon as a new window of the app's thread shows up, with or without an owner, and names it: `ok click (it opened a window "Save As")`. `check` and `uncheck` on a checkbox that asks first do the same and leave the state to the answer. New hidden-desktop cases `click opening a dialog`, `click opening an ownerless dialog` (a plain Win32 message box with no owner, 0.8 s, was 5.7 s and an error) and `check opening a dialog`; WinForms `SaveFileDialog` and `MessageBox` without an owner were checked the same way (0.9 to 1.5 s).
-- A dialog opened by the action is handed back by the foreground watch like the operated window: on the real desktop an ownerless message box had the foreground for 14 to 31 ms (174 to 180 ms when it was left to the check at the end of the action). A dialog owned by the window did not come forward at all.
+- `click` on a Win32 or WinForms button that opens a dialog (Save, Open, a message box) waited for the dialog to close and failed after 5 s with "the app did not answer the window message". It now returns as soon as the dialog appears and names it: `ok click (it opened a window "Save As")`. `check` and `uncheck` on a checkbox that asks first work the same way. Tested with dialogs with and without an owner, including a plain Win32 message box (0.8 s, was a 5.7 s error) and a WinForms `SaveFileDialog`.
+- When such a dialog comes to the front, your window is put back right away: 14 to 31 ms on the real desktop, was 174 to 180 ms.
 
 ## 0.5.2 (2026-11-18)
 
