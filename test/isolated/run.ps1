@@ -143,8 +143,8 @@ $rows = foreach ($r in $results) {
   })
   $activated = [bool]($events | Where-Object { $_.role -eq 'target' -and ($_.e -eq 'form.activated' -or $_.e -like 'focus+*') })
   $took = if ($r.expect) { [bool]($events | Where-Object { $_.role -eq 'target' -and $_.e -eq $r.expect }) } else { $null }
-  # The click lands either way; it must also come back as done, without waiting for the dialog.
-  if ($r.label -like '*modal dialog*' -and ($r.output -notmatch '^ok ' -or $r.ms -gt 3000)) { $failures.Add("$($r.app) $($r.label): $($r.ms) ms, $(($r.output -split "`n")[0])") }
+  # The click lands either way; it must also come back as done and name the dialog, without waiting for it.
+  if ($r.label -like '*dialog*' -and ($r.output -notmatch '^ok .*it opened a window "Sidehand .*Dialog"' -or $r.ms -gt 3000)) { $failures.Add("$($r.app) $($r.label): $($r.ms) ms, $(($r.output -split "`n")[0])") }
   $via = if ($r.output -match 'via window message') { 'window message' } elseif ($r.output -match 'via posted input') { 'posted input' } elseif ($r.output -match 'via UI Automation') { 'UI Automation' } elseif ($r.tool -eq 'agent-desktop') { 'UI Automation' } elseif ($r.label -like '*type_text*') { 'window message' } elseif ($r.tool -eq 'cua-driver') { 'UI Automation' } else { '-' }
   if ($r.label -like '*refused*' -and ($activated -or $took -or $r.output -notmatch 'allow-foreground|no selectable item|needs real input')) { $failures.Add("$($r.app) $($r.label): not refused") }
   if ($r.tool -eq 'sidehand' -and $r.label -notlike 'focus*' -and $r.label -notlike '*refused*' -and ($activated -or -not $took)) { $failures.Add("$($r.app) $($r.label): activated=$activated took_effect=$took") }

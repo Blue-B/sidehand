@@ -55,8 +55,11 @@ $apps = @{
 $cases = @(
   @('sidehand', 'WinForms', 'type', 'Edit "Name"', 'type', 'hello', 'text len=5'),
   @('sidehand', 'WinForms', 'click', 'Button "Apply"', 'click', '', 'apply.click'),
-  # The button's handler shows a modal dialog and does not return until it closes.
-  @('sidehand', 'WinForms', 'click opening a modal dialog', 'Button "Ask"', 'click', '', 'ask.click'),
+  # The handler shows a modal dialog and does not return until it closes: one owned by the form, one
+  # with no owner (plain Win32 apps; the form stays enabled), and a checkbox that asks first.
+  @('sidehand', 'WinForms', 'click opening a dialog', 'Button "Ask"', 'click', '', 'ask.click'),
+  @('sidehand', 'WinForms', 'click opening an ownerless dialog', 'Button "Ask native"', 'click', '', 'asknative.click'),
+  @('sidehand', 'WinForms', 'check opening a dialog', 'CheckBox "Confirm"', 'check', '', 'confirm True'),
   @('sidehand', 'WinForms', 'check', 'CheckBox "Enable"', 'check', '', 'check True'),
   @('sidehand', 'WinForms', 'select list item', 'List "Items"', 'select', 'Two', 'list Two'),
   @('sidehand', 'WinForms', 'select combo item', 'ComboBox "Mode"', 'select', 'Beta', 'combo Beta'),

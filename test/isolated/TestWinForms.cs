@@ -11,6 +11,8 @@ class TestWinForms : Form {
   // hand the foreground straight back to that window so the run cannot strand the user.
   static IntPtr handback;
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  // A native message box with no owner, as plain Win32 apps show: it does not disable the form.
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int MessageBoxW(IntPtr h, string text, string caption, uint type);
   internal static void Log(string s) {
     try { File.AppendAllText(logPath, DateTime.UtcNow.Ticks + "\t" + role + "\t" + s + "\r\n"); } catch { }
   }
@@ -47,6 +49,8 @@ class TestWinForms : Form {
     var status = new Label { Name = "Status", Text = "idle", Location = new Point(310, 12), AutoSize = true };
     // Opens a modal dialog, as Save or Open does: the click handler does not return until it closes.
     var ask = new Button { Name = "AskBtn", Text = "Ask", Location = new Point(220, 38) };
+    var askNative = new Button { Name = "AskNativeBtn", Text = "Ask native", Location = new Point(300, 38) };
+    var confirm = new CheckBox { Name = "ConfirmChk", Text = "Confirm", Location = new Point(220, 66) };
     var chk = new CheckBox { Name = "EnableChk", Text = "Enable", Location = new Point(10, 40) };
     var combo = new ComboBox { Name = "ModeCombo", AccessibleName = "Mode", DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(10, 70), Width = 150 };
     combo.Items.AddRange(new object[] { "Alpha", "Beta", "Gamma" });
@@ -74,6 +78,8 @@ class TestWinForms : Form {
     apply.Click += (s, e) => { status.Text = "applied:" + name.Text; Log("apply.click"); };
     far.Click += (s, e) => Log("far.click");
     ask.Click += (s, e) => { Log("ask.click"); MessageBox.Show(this, "Save changes?", "Sidehand Test Dialog", MessageBoxButtons.YesNo); };
+    askNative.Click += (s, e) => { Log("asknative.click"); MessageBoxW(IntPtr.Zero, "Save changes?", "Sidehand Native Dialog", 4 /* MB_YESNO */); };
+    confirm.CheckedChanged += (s, e) => { Log("confirm " + confirm.Checked); MessageBoxW(IntPtr.Zero, "Turn this on?", "Sidehand Confirm Dialog", 4); };
     name.TextChanged += (s, e) => { Log("text len=" + name.Text.Length); Log("text=" + name.Text); };
     chk.CheckedChanged += (s, e) => Log("check " + chk.Checked);
     combo.SelectedIndexChanged += (s, e) => Log("combo " + combo.SelectedItem);
@@ -83,12 +89,12 @@ class TestWinForms : Form {
     tree.AfterExpand += (s, e) => Log("tree.expand");
     tree.AfterCollapse += (s, e) => Log("tree.collapse");
     panel.Scroll += (s, e) => Log("panel.scroll");
-    foreach (Control c in new Control[] { name, apply, ask, chk, combo, list, tree, far }) {
+    foreach (Control c in new Control[] { name, apply, ask, askNative, chk, confirm, combo, list, tree, far }) {
       var cc = c;
       c.GotFocus += (s, e) => Log("focus+ " + cc.Name);
       c.LostFocus += (s, e) => Log("focus- " + cc.Name);
     }
-    Controls.AddRange(new Control[] { name, apply, ask, status, chk, combo, list, tree, panel, pad });
+    Controls.AddRange(new Control[] { name, apply, ask, askNative, confirm, status, chk, combo, list, tree, panel, pad });
   }
 }
 

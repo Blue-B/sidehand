@@ -44,7 +44,6 @@ public static class SidehandUia {
   [DllImport("kernel32.dll")] static extern uint GetTickCount();
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
   delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumThreadWindows(uint tid, EnumWindowsProc f, IntPtr l);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
@@ -355,41 +354,42 @@ public static class SidehandUia {
     Send(GetParent(h), 0x0111 /* WM_COMMAND */, new IntPtr((code << 16) | (GetDlgCtrlID(h) & 0xFFFF)), h);
   }
 
-  // A button whose handler opens a modal dialog (Save, Open, a message box) does not answer BM_CLICK
-  // until the dialog closes. Send it from another thread and stop waiting once the window is disabled:
-  // every modal loop disables its owner. The result names the dialog, so the agent can read it next.
-  static string ClickButton(IntPtr h) {
-    var root = GetAncestor(h, 2 /* GA_ROOT */);
+  // A button whose handler opens a dialog (Save, Open, a message box) does not answer BM_CLICK until
+  // the dialog closes. Send it from another thread; a window that shows up on the button's thread
+  // meanwhile is that dialog (owned or not), so stop waiting and name it for the agent to read next.
+  // The foreground watch learns of it at once: a dialog takes the foreground as it shows.
+  static string ClickButton(IntPtr h, Foreground fg) {
+    uint pid, tid = GetWindowThreadProcessId(h, out pid);
+    var before = ThreadWindows(tid);
     Exception failed = null;
     var t = new Thread(() => { try { Send(h, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero); } catch (Exception e) { failed = e; } });
     t.IsBackground = true; t.Start();
-    while (!t.Join(20)) {
-      if (IsWindowEnabled(root)) continue;
-      var dialog = ModalOf(root);
-      return dialog == null ? "click (it opened a modal window)" : "click (it opened the modal window \"" + Short(dialog, 60) + "\")";
+    var opened = IntPtr.Zero;
+    while (opened == IntPtr.Zero && !t.Join(20)) opened = Opened(tid, before);
+    if (opened == IntPtr.Zero && failed != null) opened = Opened(tid, before); // a dialog slower than the 5 s timeout
+    if (opened != IntPtr.Zero) {
+      fg.Opened = opened;
+      var sb = new StringBuilder(256); GetWindowText(opened, sb, 256);
+      return "click (it opened a window" + (sb.Length > 0 ? " \"" + Short(sb.ToString(), 60) + "\"" : "") + ")";
     }
     if (failed != null) throw failed;
     return "click";
   }
 
-  // The title of the visible window that `root` owns on its own thread, waited for up to 2 s (a dialog
-  // disables its owner before it shows itself; a file dialog takes a moment).
-  static string ModalOf(IntPtr root) {
-    uint pid, tid = GetWindowThreadProcessId(root, out pid);
-    for (int i = 0; i < 100; i++) {
-      string found = null;
-      EnumThreadWindows(tid, (w, l) => {
-        if (w == root || !IsWindowVisible(w) || GetWindow(w, 4 /* GW_OWNER */) != root) return true;
-        var sb = new StringBuilder(256); GetWindowText(w, sb, 256); found = sb.ToString(); return false;
-      }, IntPtr.Zero);
-      if (found != null) return found;
-      Thread.Sleep(20);
-    }
-    return null;
+  static List<IntPtr> ThreadWindows(uint tid) {
+    var list = new List<IntPtr>();
+    EnumThreadWindows(tid, (w, l) => { if (IsWindowVisible(w)) list.Add(w); return true; }, IntPtr.Zero);
+    return list;
+  }
+
+  // A visible window of the thread that was not there before, or zero.
+  static IntPtr Opened(uint tid, List<IntPtr> before) {
+    foreach (var w in ThreadWindows(tid)) if (!before.Contains(w)) return w;
+    return IntPtr.Zero;
   }
 
   // Returns null when the element is not a classic control, so the caller falls back to UIA.
-  static string ViaMessage(IUIAutomationElement el, string action, string value) {
+  static string ViaMessage(IUIAutomationElement el, string action, string value, Foreground fg) {
     var hv = P(el, NativeHwnd);
     var h = hv is int ? new IntPtr((int)hv) : IntPtr.Zero;
     if (h == IntPtr.Zero) return null;
@@ -401,13 +401,15 @@ public static class SidehandUia {
       Send(h, 0x000C /* WM_SETTEXT */, IntPtr.Zero, value ?? "");
       return "set text";
     }
-    if (action == "click" && button) return ClickButton(h);
+    if (action == "click" && button) return ClickButton(h, fg);
     var tog = Pattern<IUIAutomationTogglePattern>(el, PToggle);
     if ((action == "check" || action == "uncheck") && button && tog != null) {
       // Read the state through UIA (owner-drawn WinForms checkboxes ignore BM_GETCHECK); reading never activates.
       var want = action == "check" ? ToggleState.ToggleState_On : ToggleState.ToggleState_Off;
       for (int i = 0; i < 3 && tog.CurrentToggleState != want; i++) {
-        Send(h, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero);
+        // A checkbox that asks first ("Turn this on?"): the answer decides the state, so stop here.
+        var clicked = ClickButton(h, fg);
+        if (clicked != "click") return action + clicked.Substring(5);
         Thread.Sleep(50);
       }
       if (tog.CurrentToggleState != want) throw new InvalidOperationException("checkbox did not reach the requested state");
@@ -644,7 +646,7 @@ public static class SidehandUia {
     if (!consent) fg.Watch(root, targetPid);
     string done, via = "window message";
     try {
-    done = posted ? null : ViaMessage(el, action, value);
+    done = posted ? null : ViaMessage(el, action, value, fg);
     bool wpf = !drawn && Pointer.Contains(action) && el.CurrentFrameworkId == "WPF";
     if (done == null) {
       via = posted && !wpf ? "posted input" : "UI Automation";
@@ -732,8 +734,9 @@ public static class SidehandUia {
     // Keeps checking the real foreground while an action runs. The operated window
     // coming forward is the app's doing: hand the foreground back at once, not when the action
     // ends. A visible window of another app is where the user went, and becomes the one to hand
-    // back to. Other windows of the operated app (a dialog it opens, the Explorer taskbar when the
-    // target is an Explorer window) are left to the check at the end of the action.
+    // back to. A dialog the click opened (Opened) is handed back the same way. Other windows of the
+    // operated app (the Explorer taskbar when the target is an Explorer window) are left to the check
+    // at the end of the action.
     // root zero (launch): any window of the started process counts as the app coming forward.
     public void Watch(IntPtr root, uint appPid) {
       if (Before == root) return; // the user is working in that window
@@ -745,7 +748,7 @@ public static class SidehandUia {
             var now = GetForegroundWindow(); uint pid = 0;
             if (now != IntPtr.Zero && now != Before) {
               GetWindowThreadProcessId(now, out pid);
-              if (root != IntPtr.Zero ? now == root : pid == appPid) {
+              if (root != IntPtr.Zero ? now == root || now == Opened : pid == appPid) {
                 if (!GiveBack(true)) break; // not possible (an elevated or minimized window): the caller warns
                 Returned++; Ms = backAt - ok;
               } else if (pid != appPid && IsWindowVisible(now)) Before = now;
@@ -758,6 +761,8 @@ public static class SidehandUia {
       watch.IsBackground = true; watch.Start();
     }
     public void StopWatch() { stop = true; if (watch != null) watch.Join(); }
+    // A dialog the action opened: the watch hands it back like the operated window.
+    public volatile IntPtr Opened;
 
     public bool GiveBack(bool ours) {
       var now = GetForegroundWindow();
