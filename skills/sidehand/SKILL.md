@@ -15,7 +15,7 @@ The user keeps working while you operate other windows. Their foreground window 
 - `sidehand_ui_wait`: poll until a control containing `text` appears (or `gone=true`: disappears). Use it instead of sleeping.
 - `sidehand_ui_act`: `click`, `type`, `check`, `uncheck`, `select` (or `value=<item>` inside a list or combo box), `expand`, `collapse`, `scroll`, `right-click`, `double-click`, `hover`, `wheel` (`value="down 3"`), `drag` (`value=<ref>` or `"dx,dy"`), `press` (`value="Enter"`, `"ctrl+a"`, `"Down Down Enter"`), `focus`. Refs expire when the tree is read again.
 - `sidehand_window`: move, resize, minimize, restore (back behind the user's windows) or close a window without activating it. Run `restore` on a minimized window before operating it.
-- `sidehand_launch`: start an app, document or URL without it taking the focus.
+- `sidehand_launch`: start an app, document or URL without it taking the focus. With `isolated=true` (experimental) it starts on a hidden desktop of sidehand's own instead, never on the user's screen; the other tools reach it, `sidehand_list_windows` tags it `[isolated]`, and it ends with the session. If it fails with `not isolated`, the app handed off to an instance on the user's desktop: tell the user.
 - `sidehand_clipboard`: read the clipboard; writing replaces what the user copied, so prefer `type`.
 - `sidehand_capture`: `full`, `region`, `monitor`, `active`, `window` (PrintWindow, works while the window is covered).
 - `sidehand_crop`, `sidehand_mask` (black, pixelate, blur), `sidehand_resize`, `sidehand_info`.

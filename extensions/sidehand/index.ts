@@ -92,7 +92,7 @@ export default function sidehand(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "sidehand_list_windows",
 		label: "List windows",
-		description: "List visible top-level Windows windows (handle, size, minimized flag, title).",
+		description: "List visible top-level Windows windows (handle, size, minimized flag, title); windows on the isolated desktop are tagged [isolated].",
 		parameters: Type.Object({}),
 		executionMode: "parallel",
 		execute: async (_id, _p, signal) => reply(await cmd.windows(signal)),
@@ -198,13 +198,19 @@ export default function sidehand(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "sidehand_launch",
 		label: "Launch an app",
-		description: "Start an app, document or URL without it taking the user's focus. Prints the new window's title.",
+		description:
+			"Start an app, document or URL without it taking the user's focus. Prints the new window's title. " +
+			"Experimental, isolated=true: start it on a hidden desktop of its own instead, never on the user's screen or taskbar; " +
+			"the other sidehand tools reach its windows (sidehand_list_windows tags them [isolated]; WPF windows capture blank there). " +
+			"Those apps end, unsaved work lost, when this pi session ends. A single-instance app already running " +
+			"for the user (Edge, Office) hands the request to that instance: then launch fails with 'not isolated'.",
 		parameters: Type.Object({
 			app: Type.String({ description: "path, App Paths name (notepad, excel), document or URL" }),
 			args: Type.Optional(Type.String()),
+			isolated: Type.Optional(Type.Boolean({ description: "start it on sidehand's hidden desktop instead of the user's" })),
 		}),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) => reply(await cmd.launch({ app: p.app, args: p.args }, signal)),
+		execute: async (_id, p, signal) => reply(await cmd.launch({ app: p.app, args: p.args, isolated: p.isolated }, signal)),
 	});
 
 	pi.registerTool({

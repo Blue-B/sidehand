@@ -24,6 +24,8 @@ class TestWinForms : Form {
     Application.EnableVisualStyles();
     // "drawn": a target whose UI is painted text only (like games and canvas apps), for OCR refs.
     if (role == "drawn") { role = "target"; Application.Run(new DrawnForm()); return; }
+    // "handoff": exits at once without a window, as a single-instance app does after passing the request to its running instance.
+    if (role == "handoff") return;
     Application.Run(new TestWinForms());
   }
 

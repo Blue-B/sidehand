@@ -43,6 +43,7 @@ for (const n of ["window", "clipboard", "ui_act"]) assert.equal(tools[n].annotat
 for (const n of ["crop", "mask"]) assert.equal(tools[n].annotations.destructiveHint, false, n);
 assert.deepEqual(tools.ui_tree.inputSchema.required, ["title"]);
 assert.ok(tools.ui_act.inputSchema.properties.action.enum.includes("drag"));
+assert.equal(tools.launch.inputSchema.properties.isolated.type, "boolean");
 assert.match(tools.ui_ocr.description, /click, double-click, right-click, hover, wheel and drag/);
 console.log(`ok: mcp lists ${Object.keys(tools).length} tools with closed schemas and annotations`);
 

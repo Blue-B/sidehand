@@ -12,7 +12,8 @@
 | `act <t-ref> <action>` | on an OCR ref: `click`, `double-click`, `right-click`, `hover`, `wheel`, `drag` (to a t-ref or `dx,dy`), at the center of the text; OCR refs expire 60 s after the `ocr` that made them |
 | `wait <title> <text>` | wait until a control with that text appears (or `--gone`), with `--timeout ms` |
 | `window <title> <action>` | `move x,y`, `resize w,h`, `minimize`, `restore` (behind your windows), `close` |
-| `launch <app>` | start an app, path or URL without it taking your focus |
+| `launch <app>` | start an app, path or URL without it taking your focus; `--isolated` starts it on a hidden desktop instead (experimental, see below) |
+| `isolated close` | end every app the CLI started with `launch --isolated` |
 | `capture <mode>` | screenshot a window even while it is covered (`full`, `active`, `monitor`, `region`, `window`); saved in `%LOCALAPPDATA%\sidehand\captures` (from WSL) or `%TEMP%\sidehand` (on Windows), where captures older than a day are deleted; image paths on a network share are refused |
 | `mask <png> <x,y,w,h[;...]>` | cover regions you choose in a screenshot before sharing it, with `--style black`, `pixelate` or `blur` |
 | `crop`, `resize`, `info` | crop or scale a PNG, or print its size; the output is always a new file |
@@ -45,6 +46,25 @@ Games and other apps that draw their own UI (Qt, canvas) expose no controls: `oc
 - Games that read raw mouse input ignore posted clicks. `capture` and `ocr` still work.
 - Apps running as administrator need an agent running as administrator.
 - A minimized window has to be brought back first with `window <title> restore`, which puts it behind your windows.
+
+## Isolated desktop (experimental)
+
+`launch --isolated <app>` (MCP and pi: `isolated: true`) starts the app on a desktop of Sidehand's own that Windows never shows. Its windows never reach your screen or taskbar and cannot take your foreground or keyboard, so the agent can work in them while you work in yours. `tree`, `act`, `ocr`, `wait`, `window` and `capture window` reach them; `windows` lists them tagged `[isolated]`. You watch through `capture`.
+
+While an isolated desktop is open, a window title or handle is looked up there first, then on your desktop, so a title both have reaches the agent's own window. Refs act on the desktop of the window they were read from.
+
+Lifetime:
+
+- MCP and pi: the desktop and every app on it end when the MCP session or pi ends, without asking to save.
+- CLI: the apps keep running, invisible, until `sidehand isolated close` ends them (or until you sign out). Its desktop is `sidehand-cli`, or `sidehand-<SIDEHAND_SESSION>`.
+
+Limits:
+
+- A single-instance app that is already running on your desktop (Edge with your profile, Office, many UWP apps) hands the request to that instance, so its window opens on your screen, not the hidden desktop. `launch --isolated` then fails with `not isolated` and names the running process. Start such apps with their own profile (`msedge --user-data-dir=...`) or close them first.
+- URLs and documents open in whatever app is registered for them, with the same limit.
+- WPF windows capture blank there (their content is drawn only on a shown desktop), so `capture` and `ocr` show only the title bar; `tree` and `act` work. Win32, WinForms and Edge capture fine.
+- It is not a fix for apps that take your focus on your own desktop, and not a sandbox: the apps run as you, with your files and network.
+- MCP and pi: a call that waits on an isolated window cannot be cut short by cancelling it; it ends at its timeout.
 
 ## How it works
 
