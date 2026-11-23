@@ -22,6 +22,24 @@ function Start-App([string]$exe, [string]$role, [string]$log) {
 # Native tools report refusals on stderr; collect them as output instead of stopping the run.
 function Native([string]$exe, [string[]]$argv) { $ErrorActionPreference = 'Continue'; (& $exe @argv 2>&1 | ForEach-Object { "$_" }) -join "`n" }
 function Sidehand([string[]]$argv) { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $uia) + $argv) }
+function Script([string]$name, [string[]]$argv) { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo "scripts\$name")) + $argv) }
+
+# The middle of a red or blue square in a PNG, as "@x,y". Both corners 4 px away must match too: a
+# ClearType fringe on text is never that wide, and the erosion is the same on every side.
+Add-Type -AssemblyName System.Drawing
+function Find-Square([string]$png, [string]$color) {
+  $is = if ($color -eq 'red') { { param($c) $c.R -gt 200 -and $c.G -lt 80 -and $c.B -lt 80 } } else { { param($c) $c.B -gt 200 -and $c.R -lt 80 -and $c.G -lt 80 } }
+  $b = New-Object System.Drawing.Bitmap $png
+  try {
+    $xs = 0; $ys = 0; $k = 0
+    for ($y = 4; $y -lt $b.Height - 4; $y += 2) {
+      for ($x = 4; $x -lt $b.Width - 4; $x += 2) {
+        if ((& $is $b.GetPixel($x, $y)) -and (& $is $b.GetPixel($x - 4, $y - 4)) -and (& $is $b.GetPixel($x + 4, $y + 4))) { $xs += $x; $ys += $y; $k++ }
+      }
+    }
+  } finally { $b.Dispose() }
+  if ($k) { "@$([int]($xs / $k)),$([int]($ys / $k))" }
+}
 
 function AdFind($node, [string]$role, [string]$name) {
   if ($node.role -eq $role -and ($name -eq '' -or $node.name -eq $name) -and $node.ref_id) { return $node.ref_id }
@@ -93,6 +111,13 @@ $cases = @(
   @('sidehand', 'Drawn', 'OCR wheel', '"Settings"', 'wheel', 'down 2', 'drawn.wheel -240 Settings'),
   # A quoted value is another text on the window: its t-ref is the drop target.
   @('sidehand', 'Drawn', 'OCR drag to a t-ref', '"Open file"', 'drag', '"Export"', 'drawn.drag Open file -> Export'),
+  # Point refs: like an agent with vision, capture the window, find a spot with no text (a colored
+  # square) in the image it was shown and act on that pixel. "shown": captured for a 300 px preview,
+  # as the MCP server downscales its images; "allow": SIDEHAND_ALLOW names only the decoy at act time.
+  @('sidehand', 'Drawn', 'point click', '@red', 'click', '', 'drawn.click red square'),
+  @('sidehand', 'Drawn', 'point click on a downscaled capture', '@red shown', 'click', '', 'drawn.click red square'),
+  @('sidehand', 'Drawn', 'point drag to a point', '@red', 'drag', '@blue', 'drawn.drag red square -> blue square'),
+  @('sidehand', 'Drawn', 'point click outside SIDEHAND_ALLOW refused', '@red allow', 'click', '', 'drawn.click red square'),
   # WPF ignores posted mouse input and takes keys only when focused: keys must be refused.
   @('sidehand', 'WPF', 'press without consent refused', 'Edit "Name"', 'press', 'Enter', ''),
   # ...except where UI Automation does the same: wheel scrolls the nearest ScrollPattern (here the
@@ -148,6 +173,7 @@ foreach ($c in $cases) {
   Start-Sleep -Milliseconds 700
   $decoy = Start-App 'TestWinForms.exe' 'decoy' $log
   Start-Sleep -Milliseconds 800
+  $allow = ''
   try {
     if ($action -like 'window:*') {
       $argv = @('-Op', 'window', '-Title', $app.title, '-Action', $action.Substring(7))
@@ -156,6 +182,23 @@ foreach ($c in $cases) {
       # A second copy that, like most apps, activates itself when it opens.
       try { $target.Kill() } catch {}
       $argv = @('-Op', 'launch', '-Value', (Join-Path $Work 'TestWinForms.exe'), '-Arguments', "launched `"$log`"")
+    } elseif ($find -like '@*') {
+      $png = Join-Path $Work "case$n.png"; $seen = $png
+      $capArgs = @('-Mode', 'window', '-Title', $app.title, '-Out', $png, '-Json')
+      if ($find -like '*shown*') { $capArgs += @('-ShownMaxEdge', '300'); $seen = Join-Path $Work "case${n}_shown.png" }
+      # A freshly started window may not be painted yet: capture again briefly.
+      for ($try = 0; $try -lt 3; $try++) {
+        [void](Script 'capture.ps1' $capArgs)
+        if ($seen -ne $png) { [void](Script 'edit.ps1' @('-Op', 'resize', '-In', $png, '-Out', $seen, '-MaxW', '300')) }
+        $ref = Find-Square $seen 'red'
+        if ($ref) { break }
+        Start-Sleep -Milliseconds 700
+      }
+      if (-not $ref) { $ref = '@99999,99999' } # refused as outside the image, so the case fails
+      if ($value -like '@*') { $value = Find-Square $seen $value.Substring(1) }
+      if ($find -like '*allow*') { $allow = 'Sidehand Test Decoy' }
+      $argv = @('-Op', 'act', '-Ref', $ref, '-Action', $action)
+      if ($value) { $argv += @('-Value', $value) }
     } elseif ($tool -eq 'sidehand') {
       # A freshly started drawn window may not be painted yet when OCR reads it: read again briefly.
       for ($try = 0; $try -lt 3; $try++) {
@@ -191,6 +234,7 @@ foreach ($c in $cases) {
         Start-Sleep -Milliseconds 800
       }
     }
+    if ($allow) { $env:SIDEHAND_ALLOW = $allow }
     $t0 = Tick; $sw = [Diagnostics.Stopwatch]::StartNew()
     $out = if ($tool -eq 'sidehand') { Sidehand $argv }
            elseif ($tool -eq 'cua-driver') { CuaCall $action $cuaArgs }
@@ -204,9 +248,10 @@ foreach ($c in $cases) {
     }
     $results.Add([pscustomobject]@{ n = $n; tool = $tool; app = $appName; label = $label; expect = $expect; t0 = $t0; t1 = (Tick); ms = $ms; log = $log; output = $out.Trim() })
   } finally {
+    Remove-Item Env:SIDEHAND_ALLOW -ErrorAction SilentlyContinue
     foreach ($p in $target, $decoy) { try { $p.Kill() } catch {} }
     Get-Process TestWinForms -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $decoy.Id -and $_.Path -like "$Work\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
   }
 }
 $results | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 (Join-Path $Work 'results.json')
-Remove-Item (Join-Path $env:TEMP "sidehand-uia-$env:SIDEHAND_SESSION.txt") -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $env:TEMP "sidehand-uia-$env:SIDEHAND_SESSION.txt"), (Join-Path $env:TEMP "sidehand-points-$env:SIDEHAND_SESSION.txt") -ErrorAction SilentlyContinue

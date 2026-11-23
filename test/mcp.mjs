@@ -44,6 +44,8 @@ for (const n of ["crop", "mask"]) assert.equal(tools[n].annotations.destructiveH
 assert.deepEqual(tools.ui_tree.inputSchema.required, ["title"]);
 assert.ok(tools.ui_act.inputSchema.properties.action.enum.includes("drag"));
 assert.match(tools.ui_ocr.description, /click, double-click, right-click, hover, wheel and drag/);
+assert.match(tools.capture.description, /ui_act ref \"@x,y\"/);
+assert.match(tools.ui_act.inputSchema.properties.ref.description, /@x,y/);
 console.log(`ok: mcp lists ${Object.keys(tools).length} tools with closed schemas and annotations`);
 
 if (process.platform !== "win32") {

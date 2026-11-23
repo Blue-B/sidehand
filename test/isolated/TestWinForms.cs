@@ -105,6 +105,8 @@ class DrawnForm : Form {
   static readonly string[] Labels = { "Open file", "Save report", "Export", "Settings" };
   static readonly Point[] At = { new Point(20, 20), new Point(220, 20), new Point(20, 150), new Point(220, 150) };
   readonly RectangleF[] hit = new RectangleF[Labels.Length];
+  // Spots without text, found by their color in a capture (point refs @x,y).
+  static readonly Rectangle Red = new Rectangle(380, 190, 40, 40), Blue = new Rectangle(380, 100, 40, 40);
 
   public DrawnForm() {
     Text = "Sidehand Test Drawn"; StartPosition = FormStartPosition.Manual; Location = new Point(20, 20); Size = new Size(470, 300);
@@ -117,8 +119,12 @@ class DrawnForm : Form {
         hit[i] = new RectangleF(At[i], e.Graphics.MeasureString(Labels[i], font));
         e.Graphics.DrawString(Labels[i], font, Brushes.Black, At[i]);
       }
+      e.Graphics.FillRectangle(Brushes.Red, Red);
+      e.Graphics.FillRectangle(Brushes.Blue, Blue);
     };
     Func<Point, string> which = p => {
+      if (Red.Contains(p)) return "red square";
+      if (Blue.Contains(p)) return "blue square";
       for (int i = 0; i < Labels.Length; i++) if (hit[i].Contains(p)) return Labels[i];
       return "none " + p.X + "," + p.Y;
     };

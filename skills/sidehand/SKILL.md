@@ -17,7 +17,7 @@ The user keeps working while you operate other windows. Their foreground window 
 - `sidehand_window`: move, resize, minimize, restore (back behind the user's windows) or close a window without activating it. Run `restore` on a minimized window before operating it.
 - `sidehand_launch`: start an app, document or URL without it taking the focus.
 - `sidehand_clipboard`: read the clipboard; writing replaces what the user copied, so prefer `type`.
-- `sidehand_capture`: `full`, `region`, `monitor`, `active`, `window` (PrintWindow, works while the window is covered).
+- `sidehand_capture`: `full`, `region`, `monitor`, `active`, `window` (PrintWindow, works while the window is covered). After `mode=window`, `sidehand_ui_act` takes a point ref `@x,y`, pixel x,y of the image you were shown, for the same actions as a t-ref (`drag` also to another `@x,y`): use it for icons and spots with no control and no text. Point refs expire after 60 s and at the next capture, and refer to that capture's image, not to a crop or resized copy of it.
 - `sidehand_crop`, `sidehand_mask` (black, pixelate, blur), `sidehand_resize`, `sidehand_info`.
 
 A `title` is part of a window title (an exact title wins) or a handle from `sidehand_list_windows` (`0x...`); use the handle when several windows share a title.
@@ -42,7 +42,7 @@ Outside pi, the same operations are the `sidehand` CLI (`sidehand --help`; `side
 2. `sidehand_ui_tree` on that title (add `filter` when you look for one control).
 3. `sidehand_ui_act` on the ref; read the returned line to confirm the new value or state.
 4. After anything that loads, `sidehand_ui_wait` for the expected text, then act on the fresh refs it prints.
-5. When the tree is nearly empty (games, custom-drawn apps), `sidehand_ui_ocr` and act on its t-refs. Use `sidehand_capture` when the visual layout matters or OCR finds no text. Resize big captures (`max_w=1280`) before reasoning over them.
+5. When the tree is nearly empty (games, custom-drawn apps), `sidehand_ui_ocr` and act on its t-refs. Use `sidehand_capture` when the visual layout matters or OCR finds no text; after `mode=window`, act on what you see with `@x,y`. Resize big captures (`max_w=1280`) before reasoning over them.
 
 ## Examples
 

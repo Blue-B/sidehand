@@ -5,6 +5,7 @@
     -Op ocr   -Title "<substring>"         text lines read by Windows OCR, with refs (t1, t2, ...) for clicks
     -Op act   -Ref eN -Action click|type|check|uncheck|select|expand|collapse|scroll|focus
                       |right-click|double-click|hover|wheel|drag|press [-Value "..."] [-AllowForeground]
+              -Ref tN (from ocr) or @x,y (a pixel of the last window capture, capture.ps1): pointer actions only
     -Op window -Title "<substring>" -Action move|resize|minimize|restore|close [-Value "x,y" | "w,h"]
     -Op launch -Value <path, app name, document or URL> [-Arguments "..."]
     -Op clipboard [-Value text]    read the clipboard, or replace it with -Value
@@ -167,10 +168,12 @@ switch ($Op) {
   }
   'act' {
     if (-not $Ref) { throw "act requires -Ref" }
-    if ($SidehandAllow.Count -and (Test-Path $cachePath)) {
-      $h = [long](Get-Content $cachePath -TotalCount 1)
+    # A point ref (@x,y) is on the window of the last capture, any other ref on the last read window.
+    $refFile = if ($Ref -like '@*') { $SidehandPointsPath } else { $cachePath }
+    if ($SidehandAllow.Count -and (Test-Path $refFile)) {
+      $h = [long](Get-Content $refFile -TotalCount 1)
       if (-not (Get-WindowList | Where-Object { $_.Handle.ToInt64() -eq $h })) { throw "that window is not in SIDEHAND_ALLOW; read an allowed window first" }
     }
-    [SidehandUia]::Act($cachePath, $Ref, $Action, $Value, [bool]$AllowForeground)
+    [SidehandUia]::Act($cachePath, $SidehandPointsPath, $Ref, $Action, $Value, [bool]$AllowForeground)
   }
 }

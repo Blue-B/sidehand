@@ -252,6 +252,32 @@ public static class SidehandUia {
     throw new InvalidOperationException("unknown ref " + refId + "; run ocr again");
   }
 
+  // Point refs (@x,y): a pixel of the image the last window capture returned. capture.ps1 writes the
+  // window handle, then "winW,winH<TAB>shownW,shownH<TAB>scale": the window's physical size then, the
+  // size of the image as the caller showed it, and physical pixels per shown pixel.
+  static POINT ResolvePoint(string pointsPath, string refId, out IntPtr hwnd) {
+    var m = Regex.Match(refId, @"^@(\d+),(\d+)$");
+    if (!m.Success) throw new ArgumentException("a point ref is @x,y, a pixel of the image the last window capture returned (e.g. @120,45)");
+    if (!File.Exists(pointsPath)) throw new InvalidOperationException("no window capture to take point refs from; capture the window (mode window) first");
+    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(pointsPath) > TimeSpan.FromSeconds(60))
+      throw new InvalidOperationException("point refs expire 60 s after the capture, since other content may be at that spot by now; capture again");
+    var lines = File.ReadAllLines(pointsPath);
+    hwnd = new IntPtr(long.Parse(lines[0]));
+    var f = lines[1].Split('\t');
+    var size = f[0].Split(','); var shown = f[1].Split(',');
+    int x = int.Parse(m.Groups[1].Value), y = int.Parse(m.Groups[2].Value);
+    if (x >= int.Parse(shown[0]) || y >= int.Parse(shown[1]))
+      throw new InvalidOperationException(refId + " is outside the " + shown[0] + "x" + shown[1] + " image of the last capture");
+    RECT r;
+    if (!GetWindowRect(hwnd, out r)) throw new InvalidOperationException("the captured window is gone");
+    if (IsIconic(hwnd)) throw new InvalidOperationException("window is minimized; run window restore first (it puts the window back behind the user's windows without activating it)");
+    if (r.R - r.L != int.Parse(size[0]) || r.B - r.T != int.Parse(size[1]))
+      throw new InvalidOperationException("the window was resized since the capture; capture again");
+    double scale = double.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture);
+    // The middle of the shown pixel.
+    return new POINT { X = r.L + (int)((x + 0.5) * scale), Y = r.T + (int)((y + 0.5) * scale) };
+  }
+
   static string Click(IUIAutomationElement el) {
     var inv = Pattern<IUIAutomationInvokePattern>(el, PInvoke); if (inv != null) { inv.Invoke(); return "invoke"; }
     var tog = Pattern<IUIAutomationTogglePattern>(el, PToggle); if (tog != null) { tog.Toggle(); return "toggle"; }
@@ -460,7 +486,7 @@ public static class SidehandUia {
     return new IntPtr((p.Y << 16) | (p.X & 0xFFFF));
   }
 
-  static string ViaPointer(POINT at, IntPtr root, string action, string value, string cachePath) {
+  static string ViaPointer(POINT at, IntPtr root, string action, string value, string cachePath, string pointsPath) {
     var h = HwndAt(root, at);
     switch (action) {
       case "click": // OCR refs only: elements click through a pattern or a window message
@@ -500,7 +526,8 @@ public static class SidehandUia {
         if (m.Success) to = new POINT { X = at.X + int.Parse(m.Groups[1].Value), Y = at.Y + int.Parse(m.Groups[2].Value) };
         else if (Regex.IsMatch(value ?? "", @"^e\d+$")) { IntPtr unused; to = Center(Resolve(cachePath, value, out unused)); }
         else if (Regex.IsMatch(value ?? "", @"^t\d+$")) { IntPtr unused; string s; to = ResolveText(cachePath, value, out unused, out s); }
-        else throw new ArgumentException("drag needs value=<ref> or value=\"dx,dy\"");
+        else if ((value ?? "").StartsWith("@")) { IntPtr unused; to = ResolvePoint(pointsPath, value, out unused); }
+        else throw new ArgumentException("drag needs value=<ref> (e, t or @x,y) or value=\"dx,dy\"");
         PostMessage(h, 0x0200, IntPtr.Zero, XY(h, at, true));
         PostMessage(h, 0x0201, new IntPtr(1), XY(h, at, true));
         for (int i = 1; i <= 10; i++) {
@@ -621,17 +648,18 @@ public static class SidehandUia {
     return "press " + value;
   }
 
-  public static string Act(string cachePath, string refId, string action, string value, bool allowForeground) {
+  public static string Act(string cachePath, string pointsPath, string refId, string action, string value, bool allowForeground) {
     if (action == "focus" && !allowForeground)
       throw new InvalidOperationException("focus takes the user's foreground and keyboard; needs the allow-foreground flag (user consent)");
     IntPtr hwnd;
     IUIAutomationElement el = null;
     var spot = new POINT(); string text = null;
-    // An OCR ref is only a point in a custom-drawn window: mouse messages are all that reach it.
-    bool drawn = refId.StartsWith("t");
+    // An OCR or point ref is only a point on the window: mouse messages are all that reach it.
+    bool drawn = refId.StartsWith("t") || refId.StartsWith("@");
     if (drawn && action != "click" && !Pointer.Contains(action))
-      throw new InvalidOperationException("an OCR ref takes click, double-click, right-click, hover, wheel or drag");
-    if (drawn) spot = ResolveText(cachePath, refId, out hwnd, out text);
+      throw new InvalidOperationException("an OCR or point ref takes click, double-click, right-click, hover, wheel or drag");
+    if (refId.StartsWith("@")) spot = ResolvePoint(pointsPath, refId, out hwnd);
+    else if (drawn) spot = ResolveText(cachePath, refId, out hwnd, out text);
     else el = Resolve(cachePath, refId, out hwnd);
     bool posted = drawn || Pointer.Contains(action) || action == "press";
     uint targetPid; GetWindowThreadProcessId(hwnd, out targetPid);
@@ -675,7 +703,7 @@ public static class SidehandUia {
               // A text field in a Chromium window (browsers, Electron) is the exception: a posted click
               // puts the caret in it, and the page then takes posted keys while its window stays inactive.
               else if (el.CurrentFrameworkId == "Chrome" && el.CachedControlType == 50004 /* Edit */ && !Flag(el, Offscreen)) {
-                ViaPointer(Center(el), root, "click", null, cachePath);
+                ViaPointer(Center(el), root, "click", null, cachePath, pointsPath);
                 Thread.Sleep(150);
                 // The keys go to whatever has the focus in that window: make sure it is this field
                 // (a banner or dialog over it would have taken the click instead).
@@ -686,7 +714,7 @@ public static class SidehandUia {
             done = Press(kh, value);
           }
         } else if (wpf) done = ViaWpfPointer(el, root, action, value);
-        else if (posted) done = ViaPointer(drawn ? spot : Center(el), root, action, value, cachePath);
+        else if (posted) done = ViaPointer(drawn ? spot : Center(el), root, action, value, cachePath, pointsPath);
         else done = ViaUia(el, action, value, root);
         if (guard) Thread.Sleep(250); // late activations land inside the guard
       } finally {
@@ -703,7 +731,7 @@ public static class SidehandUia {
       throw;
     } finally { fg.StopWatch(); }
     string after;
-    if (drawn) after = refId + " \"" + text + "\" at " + spot.X + "," + spot.Y;
+    if (drawn) after = refId + (text != null ? " \"" + text + "\"" : "") + " at " + spot.X + "," + spot.Y;
     else try { after = Describe(el.BuildUpdatedCache(Request()), refId, false) ?? refId; } catch (COMException) { after = refId + " (element gone after action)"; }
     var result = "ok " + done + " via " + via + ": " + after;
     var fgAfter = GetForegroundWindow(); uint fgPid; GetWindowThreadProcessId(fgAfter, out fgPid);

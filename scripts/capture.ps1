@@ -9,6 +9,8 @@
   Common:
     -Out  <path>                                  output PNG (default: %LOCALAPPDATA%\sidehand\captures\sidehand.png)
     -BringToFront                                 restore + foreground before capture (window/active)
+    -ShownMaxEdge N                               window mode: the caller shows the image downscaled to N px
+                                                  on its long edge; point refs (@x,y) are then pixels of that
     -Json                                         emit JSON result line
 #>
 [CmdletBinding()]
@@ -20,6 +22,7 @@ param(
   [string]$Title = "",
   [string]$Out = "$env:LOCALAPPDATA\sidehand\captures\sidehand.png",
   [switch]$BringToFront,
+  [int]$ShownMaxEdge = 0,
   [switch]$Json
 )
 
@@ -31,6 +34,9 @@ Ensure-Dir $Out
 $rx = 0; $ry = 0; $rw = 0; $rh = 0
 $method = "BitBlt"
 $matchedTitle = $null
+$shown = @($null, $null)
+# Points of an earlier window capture must not be taken for points of this image.
+Remove-Item $SidehandPointsPath -ErrorAction SilentlyContinue
 
 if ($Mode -in 'full', 'region', 'monitor') { Assert-Unrestricted "$Mode capture" }
 switch ($Mode) {
@@ -91,6 +97,21 @@ switch ($Mode) {
     $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
     $method = "PrintWindow"
+
+    # Point refs: image pixel -> offset from the window's top-left (PrintWindow's origin) in physical
+    # pixels. PrintWindow draws in the window's own DPI (a DPI-unaware app at 125% comes out at 80%),
+    # and the caller may show the image downscaled (same arithmetic as edit.ps1 resize).
+    $phys = New-Object SidehandNative+RECT; [void][SidehandNative]::GetWindowRect($hWnd, [ref]$phys)
+    $old = [SidehandDpi]::SetThreadDpiAwarenessContext([SidehandDpi]::GetWindowDpiAwarenessContext($hWnd))
+    try { $own = New-Object SidehandNative+RECT; [void][SidehandNative]::GetWindowRect($hWnd, [ref]$own) } finally { [void][SidehandDpi]::SetThreadDpiAwarenessContext($old) }
+    $shown = @($rw, $rh)
+    if ($ShownMaxEdge -gt 0 -and [Math]::Max($rw, $rh) -gt $ShownMaxEdge) {
+      $r = $ShownMaxEdge / [double][Math]::Max($rw, $rh)
+      $shown = @([int]($rw * $r), [int]($rh * $r))
+    }
+    $scale = ($phys.Right - $phys.Left) / [double]($own.Right - $own.Left) * $rw / $shown[0]
+    [System.IO.File]::WriteAllLines($SidehandPointsPath, [string[]]@($hWnd.ToInt64(),
+      "$($phys.Right - $phys.Left),$($phys.Bottom - $phys.Top)`t$($shown[0]),$($shown[1])`t$scale"))
   }
 }
 
@@ -111,6 +132,7 @@ $result = [pscustomobject]@{
   x       = $rx; y = $ry; w = $rw; h = $rh
   out     = $Out
   title   = $matchedTitle
+  shown_w = $shown[0]; shown_h = $shown[1]
 }
 
 if ($Json) { Write-Output (Write-Json $result) }
