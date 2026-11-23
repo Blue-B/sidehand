@@ -24,6 +24,12 @@
           "description": "Only these windows can be read, operated or captured, e.g. Notepad;Contoso* (title parts or wildcards, separated by ;). Screen captures, launching apps and the clipboard are then off.",
           "isRequired": false,
           "isSecret": false
+        },
+        {
+          "name": "SIDEHAND_CONFIRM",
+          "description": "When the client cannot ask the user (no MCP elicitation): unset acts without asking, strict refuses first actions on an app and sensitive actions (Delete, Send, Pay, window close) and tells the agent to ask the user, off never asks.",
+          "isRequired": false,
+          "isSecret": false
         }
       ],
       "packageArguments": [

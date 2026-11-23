@@ -94,3 +94,21 @@ env = { SIDEHAND_ALLOW = "Notepad" }
 ```
 
 On the command line: `codex mcp add sidehand --env SIDEHAND_ALLOW=Notepad -- npx -y sidehand mcp`. Claude Code takes the same `--env` option.
+
+## Approvals
+
+Through MCP and pi, Sidehand asks you before it acts on an app for the first time: **Don't allow**, **Allow once (this session)**, **Always allow** or **Always block**. Apps are told apart by their program name (`notepad.exe`). It asks again before a click, double-click or Enter on a control named like Delete, Remove, Send, Pay, Buy, Checkout, Sign in, Share or Publish (or 삭제, 보내기, 결제, 로그인, ...), and before it closes a window. The question names the app, the control and the action. Acting means `ui_act`, `window`, `launch` and writing the clipboard; reading and screenshots never ask. If you say no, the agent gets an error that tells it not to retry.
+
+MCP clients show the question when they support elicitation; pi shows it in its own dialog. The CLI never asks: an agent runs it.
+
+Your Always answers are kept in `%LOCALAPPDATA%\sidehand\approvals.json` (`{ "allow": [...], "block": [...] }`). Sidehand uses this file from both Windows and WSL. To undo an answer, edit or delete the file. `SIDEHAND_CONFIG_DIR` points Sidehand to another folder.
+
+`SIDEHAND_CONFIRM` sets what happens when the client cannot ask:
+
+| Value | Behavior |
+|---|---|
+| unset | acts as before, without asking |
+| `strict` | refuses anything that needs your approval and tells the agent to ask you (Always-allowed apps still work) |
+| `off` | never asks, even if the client could |
+
+Always block applies in every mode. `SIDEHAND_ALLOW` works as before, and the questions come on top of it.

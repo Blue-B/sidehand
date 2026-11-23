@@ -103,7 +103,14 @@ $cases = @(
   @('sidehand', 'WPF', 'right-click refused', 'Text "Pad"', 'right-click', '', 'contextmenu'),
   @('sidehand', 'WinForms', 'window minimize', '', 'window:minimize', '', 'state Minimized'),
   @('sidehand', 'WinForms', 'window move', '', 'window:move', '30,40', 'moved'),
-  @('sidehand', 'WinForms', 'launch an app', '', 'launch', '', 'shown')
+  @('sidehand', 'WinForms', 'launch an app', '', 'launch', '', 'shown'),
+  # Approval checks (lib/approve.mjs): which app an action would touch and the control's name, acting on
+  # nothing. The expected value is a pattern for the output.
+  @('sidehand', 'WinForms', 'target of a ref', 'Button "Apply"', 'target', '', '^(?=.*"app":"testwinforms\.exe")(?=.*"control":"Apply")(?=.*"window":"Sidehand Test WinForms")'),
+  @('sidehand', 'Drawn', 'target of an OCR ref', '"Save report"', 'target', '', '^(?=.*"app":"testwinforms\.exe")(?=.*"control":"Save report")'),
+  @('sidehand', 'WinForms', 'target of a window', '', 'target:window', '', '^(?=.*"app":"testwinforms\.exe")(?=.*"window":"Sidehand Test WinForms")'),
+  @('sidehand', 'WinForms', 'target of a launch', '', 'target:launch', '', '"app":"testwinforms\.exe"'),
+  @('sidehand', 'WinForms', 'target of a URL launch', '', 'target:url', '', '"app":"[^"]+"')
 )
 # A page in Edge, when installed. The page puts its events in the window title, and the field's value
 # is read back: they show that the action took effect. Whether a browser window was activated cannot
@@ -152,6 +159,12 @@ foreach ($c in $cases) {
     if ($action -like 'window:*') {
       $argv = @('-Op', 'window', '-Title', $app.title, '-Action', $action.Substring(7))
       if ($value) { $argv += @('-Value', $value) }
+    } elseif ($action -eq 'target:window') {
+      $argv = @('-Op', 'target', '-Title', $app.title)
+    } elseif ($action -eq 'target:launch') {
+      $argv = @('-Op', 'target', '-Value', (Join-Path $Work 'TestWinForms.exe'))
+    } elseif ($action -eq 'target:url') {
+      $argv = @('-Op', 'target', '-Value', 'https://example.com/')
     } elseif ($action -eq 'launch') {
       # A second copy that, like most apps, activates itself when it opens.
       try { $target.Kill() } catch {}
@@ -165,7 +178,7 @@ foreach ($c in $cases) {
       }
       $ref = if ($tree -match "(?m)^\s*([et]\d+) $([regex]::Escape($find))") { $Matches[1] } else { 'e0' }
       if ($value -like '"*' -and $tree -match "(?m)^\s*(t\d+) $([regex]::Escape($value))") { $value = $Matches[1] }
-      $argv = @('-Op', 'act', '-Ref', $ref, '-Action', $action.TrimEnd('+'))
+      $argv = if ($action -eq 'target') { @('-Op', 'target', '-Ref', $ref) } else { @('-Op', 'act', '-Ref', $ref, '-Action', $action.TrimEnd('+')) }
       if ($value) { $argv += @('-Value', $value) }
       if ($action.EndsWith('+')) { $argv += '-AllowForeground' }
     } elseif ($tool -eq 'cua-driver') {
