@@ -50,6 +50,11 @@ Environment
                                                   screen captures, launch and the clipboard are then off
   SIDEHAND_SESSION=agent1                         own ref cache: without it every CLI call shares one, so two
                                                   agents using the CLI at once overwrite each other's refs
+  SIDEHAND_INDICATOR=0                            no activity indicator; a Stop pressed in another session's
+                                                  indicator still refuses every action until Resume
+
+While Sidehand acts, an indicator in the corner of your screen shows what it does. Its Stop button (or
+Ctrl+Alt+Pause while it is open) refuses every action of every agent until you press Resume; reading still works.
 
 Runs on Windows or inside WSL; needs only powershell.exe.`;
 

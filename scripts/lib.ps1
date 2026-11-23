@@ -47,6 +47,16 @@ public class SidehandNative {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("dwmapi.dll")]
   public static extern int DwmGetWindowAttribute(IntPtr hWnd, int dwAttr, out RECT pvAttr, int cbAttr);
+  [DllImport("user32.dll")] static extern IntPtr GetThreadDesktop(uint tid);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr h, int index, StringBuilder info, int bytes, out int needed);
+
+  // "Default" on the user's desktop; the hidden-desktop test has its own name.
+  public static string DesktopName() {
+    var sb = new StringBuilder(256); int needed;
+    GetUserObjectInformation(GetThreadDesktop(GetCurrentThreadId()), 2 /* UOI_NAME */, sb, sb.Capacity * 2, out needed);
+    return sb.ToString();
+  }
 
   [StructLayout(LayoutKind.Sequential)]
   public struct RECT { public int Left, Top, Right, Bottom; }

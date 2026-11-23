@@ -94,3 +94,7 @@ env = { SIDEHAND_ALLOW = "Notepad" }
 ```
 
 On the command line: `codex mcp add sidehand --env SIDEHAND_ALLOW=Notepad -- npx -y sidehand mcp`. Claude Code takes the same `--env` option.
+
+## Activity indicator and Stop
+
+While an agent acts, a strip in the corner of your screen shows what it does, with a Stop button (or Ctrl+Alt+Pause while it is open) that refuses every action of every agent until you press Resume (see [usage.md](usage.md#seeing-and-stopping-what-it-does)). It never takes your focus. To turn it off, set `SIDEHAND_INDICATOR=0` the same way as `SIDEHAND_ALLOW` above, for example `"env": { "SIDEHAND_INDICATOR": "0" }`. Stop still holds when another agent's strip was used.

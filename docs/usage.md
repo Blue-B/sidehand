@@ -24,6 +24,14 @@
 
 MCP exposes the same operations as tools: `list_windows`, `list_monitors`, `ui_tree`, `ui_ocr`, `ui_wait`, `ui_act`, `window`, `launch`, `clipboard`, `capture`, `crop`, `mask`. pi has the same tools with a `sidehand_` prefix, plus `sidehand_resize` and `sidehand_info`.
 
+## Seeing and stopping what it does
+
+While Sidehand acts (`act`, `window`, `launch`, a clipboard write) and for 3 s after, a small strip in the bottom-right corner of your screen says what it does: `Sidehand: click in Notepad`. It never takes your foreground or keyboard, also when you click it, and has no taskbar button. All agents and sessions share one strip; it closes itself 30 s after the last action.
+
+**Stop** on the strip, or Ctrl+Alt+Pause while it is open, stops every agent at once: each action is refused with "The user pressed Stop in Sidehand. Ask the user before doing anything else.", and actions an MCP agent had queued are dropped. Reading (`tree`, `ocr`, `wait`, `capture`, ...) still works. The strip then says Sidehand stopped and shows **Resume**, which lets agents act again.
+
+`SIDEHAND_INDICATOR=0` turns the strip off for that agent. A Stop pressed on another agent's strip still holds for it. With the strip off everywhere, delete `%LOCALAPPDATA%\sidehand\stop-Default` to resume.
+
 ## What works in the background
 
 | | Win32, WinForms | WPF | Chrome, Edge | VS Code |
@@ -50,4 +58,4 @@ Games and other apps that draw their own UI (Qt, canvas) expose no controls: `oc
 
 Sidehand is a UI Automation client, the same interface screen readers use, compiled on your PC on first use. Classic controls get plain window messages (`WM_SETTEXT`, `BM_CLICK`, ...), which never activate a window. Everything else gets a UI Automation call while the target window is marked no-activate, so the app cannot pull itself to the front. Clicks and keys are posted to the app's own message queue, never to your mouse. If an app forces itself forward anyway, Sidehand hands the foreground back to your window without touching the keyboard or mouse.
 
-It runs no daemon, sends no telemetry and downloads no binary. The code is about 2,800 lines.
+It runs no daemon (the activity strip closes itself 30 s after the last action), sends no telemetry and downloads no binary. The code is about 2,800 lines.

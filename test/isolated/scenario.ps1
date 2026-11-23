@@ -208,5 +208,66 @@ foreach ($c in $cases) {
     Get-Process TestWinForms -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $decoy.Id -and $_.Path -like "$Work\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
   }
 }
+
+# The activity indicator: an act shows it while the user's window (the decoy) keeps the foreground;
+# its Stop button, clicked with posted messages, makes the next act refused (reading still works), and
+# Resume allows acting again.
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class TestIndicator {
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string name);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+  [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+  // A left click at the button (the right end of the strip) as posted messages, not the real mouse.
+  public static void ClickButton(IntPtr h) {
+    RECT r; GetClientRect(h, out r); var at = new IntPtr((r.B / 2) << 16 | (r.R - 20));
+    PostMessage(h, 0x0201 /* WM_LBUTTONDOWN */, new IntPtr(1), at); PostMessage(h, 0x0202 /* WM_LBUTTONUP */, IntPtr.Zero, at);
+  }
+}
+'@
+$n++
+$log = Join-Path $Work "case$n.log"
+$target = Start-App 'TestWinForms.exe' 'target' $log
+Start-Sleep -Milliseconds 700
+$decoy = Start-App 'TestWinForms.exe' 'decoy' $log
+Start-Sleep -Milliseconds 800
+function Indicator-Case([string]$label, [string]$expect, [scriptblock]$before, [scriptblock]$check) {
+  & $before
+  $tree = Sidehand @('-Op', 'tree', '-Title', $apps.WinForms.title)
+  if ($tree -notmatch '(?m)^\s*(e\d+) Button "Apply"') { throw "indicator $label`: tree failed: $tree" }
+  $ref = $Matches[1]
+  $fg = [TestIndicator]::GetForegroundWindow()
+  $t0 = Tick; $sw = [Diagnostics.Stopwatch]::StartNew()
+  $out = Sidehand @('-Op', 'act', '-Ref', $ref, '-Action', 'click')
+  $ms = $sw.ElapsedMilliseconds
+  & $check $fg $t0
+  Start-Sleep -Milliseconds 500
+  $results.Add([pscustomobject]@{ n = $n; tool = 'sidehand'; app = 'Indicator'; label = $label; expect = $expect; t0 = $t0; t1 = (Tick); ms = $ms; log = $log; output = $out.Trim() })
+}
+try {
+  Indicator-Case 'click shows the indicator' 'indicator shown' {} {
+    param($fg, $t0)
+    for ($i = 0; $i -lt 50; $i++) {
+      $ind = [TestIndicator]::FindWindow('SidehandIndicator', $null)
+      if ($ind -ne [IntPtr]::Zero -and [TestIndicator]::IsWindowVisible($ind)) { break }
+      Start-Sleep -Milliseconds 100
+    }
+    Start-Sleep -Milliseconds 300
+    # Shown, the foreground still where it was, and the user's window never lost activation.
+    $deactivated = Get-Content -Encoding UTF8 $log | Where-Object { $_ -match "^(\d+)`tdecoy`tform.deactivate" -and [long]$Matches[1] -ge $t0 }
+    if ($ind -ne [IntPtr]::Zero -and [TestIndicator]::IsWindowVisible($ind) -and [TestIndicator]::GetForegroundWindow() -eq $fg -and -not $deactivated) {
+      Add-Content -Encoding UTF8 $log "$(Tick)`ttarget`tindicator shown"
+    }
+  }
+  $ind = [TestIndicator]::FindWindow('SidehandIndicator', $null)
+  Indicator-Case 'act after Stop refused' 'apply.click' { [TestIndicator]::ClickButton($ind); Start-Sleep -Milliseconds 500 } {}
+  Indicator-Case 'act after Resume' 'apply.click' { [TestIndicator]::ClickButton($ind); Start-Sleep -Milliseconds 500 } {}
+} finally {
+  foreach ($p in $target, $decoy) { try { $p.Kill() } catch {} }
+}
 $results | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 (Join-Path $Work 'results.json')
 Remove-Item (Join-Path $env:TEMP "sidehand-uia-$env:SIDEHAND_SESSION.txt") -ErrorAction SilentlyContinue
