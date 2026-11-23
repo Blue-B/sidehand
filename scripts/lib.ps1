@@ -4,14 +4,14 @@
 # Inline C# is compiled once into %LOCALAPPDATA%\sidehand and loaded from there afterwards.
 # Compiling on every call would start csc.exe each time: slower, and an agent without a console
 # would see that compiler flash a console window.
-function Import-SidehandType([string]$source) {
+function Import-SidehandType([string]$source, [string]$name = 'SidehandNative') {
   $dir = Join-Path $env:LOCALAPPDATA 'sidehand'
   $sha = [Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($source))
-  $dll = Join-Path $dir ('SidehandNative-' + ([BitConverter]::ToString($sha) -replace '-', '').Substring(0, 12) + '.dll')
+  $dll = Join-Path $dir ("$name-" + ([BitConverter]::ToString($sha) -replace '-', '').Substring(0, 12) + '.dll')
   if (-not (Test-Path $dll)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Add-Type -TypeDefinition $source -OutputAssembly $dll -OutputType Library
-    Get-ChildItem $dir -Filter 'SidehandNative-*.dll' | Where-Object { $_.FullName -ne $dll } | Remove-Item -ErrorAction SilentlyContinue
+    Get-ChildItem $dir -Filter "$name-*.dll" | Where-Object { $_.FullName -ne $dll } | Remove-Item -ErrorAction SilentlyContinue
   }
   Add-Type -Path $dll
 }

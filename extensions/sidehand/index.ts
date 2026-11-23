@@ -104,7 +104,7 @@ export default function sidehand(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "sidehand_list_windows",
 		label: "List windows",
-		description: "List visible top-level Windows windows (handle, size, minimized flag, title).",
+		description: "List visible top-level Windows windows (handle, size, minimized flag, title); windows on the isolated desktop are tagged [isolated].",
 		parameters: Type.Object({}),
 		executionMode: "parallel",
 		execute: async (_id, _p, signal) => reply(await cmd.windows(signal)),
@@ -233,14 +233,22 @@ export default function sidehand(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "sidehand_launch",
 		label: "Launch an app",
-		description: "Start an app, document or URL without it taking the user's focus. Prints the new window's title." + mayAsk + ").",
+		description:
+			"Start an app, document or URL without it taking the user's focus. Prints the new window's title. " +
+			"Experimental, isolated=true: start it on a hidden desktop of its own instead, never on the user's screen or taskbar; " +
+			"the other sidehand tools reach its windows (sidehand_list_windows tags them [isolated]; WPF windows capture blank there). " +
+			"Those apps end, unsaved work lost, when this pi session ends. A single-instance app already running " +
+			"for the user (Edge, Office) hands the request to that instance: then launch fails with 'not isolated'." +
+			mayAsk +
+			").",
 		parameters: Type.Object({
 			app: Type.String({ description: "path, App Paths name (notepad, excel), document or URL" }),
 			args: Type.Optional(Type.String()),
+			isolated: Type.Optional(Type.Boolean({ description: "start it on sidehand's hidden desktop instead of the user's" })),
 		}),
 		executionMode: "sequential",
 		execute: async (_id, p, signal, _onUpdate, ctx) => {
-			const o = { app: p.app, args: p.args };
+			const o = { app: p.app, args: p.args, isolated: p.isolated };
 			await approve("launch", o, asker(ctx, signal), signal);
 			return reply(await cmd.launch(o, signal));
 		},
@@ -281,18 +289,21 @@ export default function sidehand(pi: ExtensionAPI): void {
 			return_image: returnImage,
 		}),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) =>
-			reply(
+		execute: async (_id, p, signal) => {
+			// Point refs are pixels of the image the model sees: image() downscales it only with ffmpeg.
+			const shownMaxEdge = p.return_image !== false && process.env.SIDEHAND_NO_DOWNSCALE !== "1" && ffmpeg() ? EMBED_MAX_EDGE : undefined;
+			const r = reply(
 				await cmd.capture(
-					{
-						mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out,
-						// Point refs are pixels of the image the model sees: image() downscales it only with ffmpeg.
-						shownMaxEdge: p.return_image !== false && process.env.SIDEHAND_NO_DOWNSCALE !== "1" && ffmpeg() ? EMBED_MAX_EDGE : undefined,
-					},
+					{ mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out, shownMaxEdge },
 					signal,
 				),
 				p.return_image !== false,
-			),
+			);
+			// image() fell back to the full-size PNG: the point refs assume the downscaled size.
+			if (shownMaxEdge && p.mode === "window" && r.content.some((c) => c.type === "image" && c.mimeType === "image/png"))
+				r.content.push({ type: "text", text: "WARNING: downscaling failed, so this image is shown at full size and point refs (@x,y) on it would land off; do not act on points of it." });
+			return r;
+		},
 	});
 
 	pi.registerTool({

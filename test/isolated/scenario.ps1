@@ -345,6 +345,77 @@ try {
 } finally {
   foreach ($p in $target, $decoy) { try { $p.Kill() } catch {} }
 }
+
+# Under the work folder's LOCALAPPDATA like every Sidehand call here (the action log, Stop).
+$realLocal = $env:LOCALAPPDATA; $env:LOCALAPPDATA = $logHome
+try {
+# launch --isolated: apps on a second hidden desktop of sidehand's own (scripts/isolated.ps1). First the
+# worker the MCP server and pi start there, then the CLI's one command per call. A case passes when its
+# check writes "isolated ok" to the log; an app activating itself in that time still fails it.
+$isoLog = Join-Path $Work 'isolated.log'
+$iso = Join-Path $Repo 'scripts\isolated.ps1'
+function Seen([string]$e, [long]$t0) { [bool](Get-Content -Encoding UTF8 $isoLog -ErrorAction SilentlyContinue | Where-Object { $t, $role, $x = $_ -split "`t", 3; [long]$t -ge $t0 -and $x -eq $e }) }
+function IsoCase([string]$label, [scriptblock]$run, [scriptblock]$check) {
+  $t0 = Tick; $sw = [Diagnostics.Stopwatch]::StartNew()
+  $out = "$(& $run)"; $ms = $sw.ElapsedMilliseconds
+  Start-Sleep -Milliseconds 300
+  if (& $check) { Add-Content -Encoding UTF8 $isoLog "$(Tick)`ttarget`tisolated ok" }
+  $results.Add([pscustomobject]@{ n = 0; tool = 'sidehand'; app = 'Isolated'; label = $label; expect = 'isolated ok'; t0 = $t0; t1 = (Tick); ms = $ms; log = $isoLog; output = $out.Trim() })
+}
+function Mine { @(Get-Process TestWinForms, TestWpf -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$Work\*" }) }
+$psi = New-Object System.Diagnostics.ProcessStartInfo 'powershell.exe', "-NoProfile -ExecutionPolicy Bypass -File `"$iso`" -Op worker"
+$psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+$relay = [System.Diagnostics.Process]::Start($psi)
+$wid = 0
+# One request to the isolated worker, as lib/powershell.mjs sends it: the output, or "ERR <message>".
+function W([string]$script, [string[]]$argv) {
+  $script:wid++
+  $relay.StandardInput.WriteLine((@{ id = $script:wid; cmd = "& '$(Join-Path $Repo "scripts\$script")' $($argv -join ' ')" } | ConvertTo-Json -Compress))
+  do { $l = $relay.StandardOutput.ReadLine() } until ($null -eq $l -or $l.StartsWith('{'))
+  $r = $l | ConvertFrom-Json
+  if ($r.code -ne 0 -or $r.err) { "ERR $($r.err)" } else { $r.out }
+}
+function Q([string]$s) { "'$($s.Replace("'", "''"))'" }
+function Ref([string]$tree, [string]$find) { if ($tree -match "(?m)^\s*([et]\d+) $([regex]::Escape($find))") { $Matches[1] } else { 'e0' } }
+$wf = Join-Path $Work 'TestWinForms.exe'
+
+IsoCase 'launch --isolated' { W uia.ps1 @('-Op', 'launch', '-Value', (Q $wf), '-Arguments', (Q "target `"$isoLog`"")) } { $out -match '^ok launched on the isolated desktop: Sidehand Test WinForms \(0x' -and (Seen 'shown' $t0) }
+IsoCase 'isolated window not on the outer desktop' { Sidehand @('-Op', 'tree', '-Title', 'Sidehand Test WinForms') } { $out -match 'no visible window matches' }
+IsoCase 'type on the isolated desktop' { W uia.ps1 @('-Op', 'act', '-Ref', (Ref (W uia.ps1 @('-Op', 'tree', '-Title', (Q 'Sidehand Test WinForms'))) 'Edit "Name"'), '-Action', 'type', '-Value', 'hello') } { Seen 'text len=5' $t0 }
+IsoCase 'click on the isolated desktop' { W uia.ps1 @('-Op', 'act', '-Ref', (Ref (W uia.ps1 @('-Op', 'tree', '-Title', (Q 'Sidehand Test WinForms'))) 'Button "Apply"'), '-Action', 'click') } { Seen 'apply.click' $t0 }
+IsoCase 'capture on the isolated desktop' { W capture.ps1 @('-Mode', 'window', '-Title', (Q 'Sidehand Test WinForms'), '-Out', (Q "$Work\iso.png"), '-Json') } {
+  Add-Type -AssemblyName System.Drawing
+  $b = [System.Drawing.Bitmap]::FromFile("$Work\iso.png"); $colors = @{}
+  for ($x = 0; $x -lt $b.Width; $x += 9) { for ($y = 0; $y -lt $b.Height; $y += 9) { $colors[$b.GetPixel($x, $y).ToArgb()] = 1 } }
+  $b.Dispose(); $out -match 'PrintWindow' -and $colors.Count -gt 10
+}
+$decoy = Start-App 'TestWinForms.exe' 'decoy' $isoLog
+IsoCase 'outer refs stay on the outer desktop' { [void](Sidehand @('-Op', 'tree', '-Title', 'Sidehand Test Decoy')); W uia.ps1 @('-Op', 'act', '-Ref', 'e1', '-Action', 'click') } { $out -match 'not on the isolated desktop' }
+IsoCase 'WPF on the isolated desktop' {
+  [void](W uia.ps1 @('-Op', 'launch', '-Value', (Q (Join-Path $Work 'TestWpf.exe')), '-Arguments', (Q "target `"$isoLog`"")))
+  W uia.ps1 @('-Op', 'act', '-Ref', (Ref (W uia.ps1 @('-Op', 'tree', '-Title', (Q 'Sidehand Test WPF target'))) 'Edit "Name"'), '-Action', 'type', '-Value', 'wpf!')
+} { Seen 'text len=4' $t0 }
+IsoCase 'OCR click on the isolated desktop' {
+  [void](W uia.ps1 @('-Op', 'launch', '-Value', (Q $wf), '-Arguments', (Q "drawn `"$isoLog`"")))
+  for ($try = 0; $try -lt 3 -and ($ref = Ref ($tree = W uia.ps1 @('-Op', 'ocr', '-Title', (Q 'Sidehand Test Drawn'))) '"Save report"') -eq 'e0'; $try++) { Start-Sleep -Milliseconds 700 }
+  W uia.ps1 @('-Op', 'act', '-Ref', $ref, '-Action', 'click')
+} { Seen 'drawn.click Save report' $t0 }
+# The decoy stands in for a single-instance app already running on the user's desktop.
+IsoCase 'handoff to a running instance reported' { W uia.ps1 @('-Op', 'launch', '-Value', (Q $wf), '-Arguments', (Q "handoff `"$isoLog`"")) } { $out -match "^ERR not isolated: .*TestWinForms is already running outside it \(pid [^)]*\b$($decoy.Id)\b" }
+try { $decoy.Kill() } catch {}
+IsoCase 'session end ends isolated apps' { $relay.StandardInput.Close(); [void]$relay.WaitForExit(15000); Start-Sleep -Milliseconds 500; "relay exited: $($relay.HasExited); left: $((Mine).Count)" } { $relay.HasExited -and (Mine).Count -eq 0 }
+
+# The CLI: one PowerShell on the desktop per call; the apps keep it until isolated close.
+function Run([string]$command, [switch]$Create) { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $iso, '-Op', 'run', '-Command', $command) + $(if ($Create) { '-Create' })) }
+IsoCase 'CLI launch --isolated and click' {
+  # No double quotes: Windows PowerShell passes them to a native program unescaped.
+  [void](Run "& '$uia' -Op launch -Value $(Q $wf) -Arguments $(Q "target $isoLog")" -Create)
+  $ref = Ref (Run "& '$uia' -Op tree -Title 'Sidehand Test WinForms'") 'Button "Apply"'
+  Run "& '$uia' -Op act -Ref $ref -Action click"
+} { Seen 'apply.click' $t0 }
+IsoCase 'isolated close' { Native 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $iso, '-Op', 'close'); Start-Sleep -Milliseconds 500; Run "& '$uia' -Op tree -Title 'Sidehand Test WinForms'" } { $out -match '^ok closed the isolated desktop: ended 1 ' -and $out -match 'no isolated desktop is open' -and (Mine).Count -eq 0 }
+} finally { $env:LOCALAPPDATA = $realLocal }
+
 $results | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 (Join-Path $Work 'results.json')
 # Every action of the run has its line in the action log, with window, process and control, and never the typed text.
 $logFile = Join-Path $logHome 'sidehand\actions.log'

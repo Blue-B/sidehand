@@ -51,6 +51,7 @@ for (const n of ["window", "clipboard", "ui_act", "ui_undo"]) assert.equal(tools
 for (const n of ["crop", "mask"]) assert.equal(tools[n].annotations.destructiveHint, false, n);
 assert.deepEqual(tools.ui_tree.inputSchema.required, ["title"]);
 assert.ok(tools.ui_act.inputSchema.properties.action.enum.includes("drag"));
+assert.equal(tools.launch.inputSchema.properties.isolated.type, "boolean");
 assert.match(tools.ui_ocr.description, /click, double-click, right-click, hover, wheel and drag/);
 assert.match(tools.capture.description, /ui_act ref \"@x,y\"/);
 assert.match(tools.ui_act.inputSchema.properties.ref.description, /@x,y/);

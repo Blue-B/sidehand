@@ -14,6 +14,8 @@
                                    JSON: the app (exe name) an action would touch, its window and the ref's control; acts on nothing
     -Op watch                      internal: launch's background foreground watch (state in SIDEHAND_LAUNCH_WATCH)
     -Op indicator                  internal: the activity indicator with Stop (SidehandIndicator), one per desktop
+  Run on the isolated desktop (isolated.ps1 sets SIDEHAND_ISOLATED), launch fails unless a window opens there,
+  and act refuses refs of a window on another desktop.
   -Title is a handle from list.ps1 (0x...), an exact title, or else part of one (case-insensitive).
   Refs from the last tree/wait/ocr call are cached in %TEMP%\sidehand-uia[-<SIDEHAND_SESSION>].txt as UIA RuntimeIds.
   The engine (SidehandUia.cs, Import-UiaEngine in lib.ps1) is compiled once into %LOCALAPPDATA%\sidehand and reused.
@@ -66,14 +68,16 @@ function Find-Window {
 
 # Stop and the activity indicator: state shared by every Sidehand process on this desktop (the
 # hidden-desktop test gets its own). SIDEHAND_INDICATOR=0 hides the indicator; Stop still holds.
-$desk = [SidehandNative]::DesktopName()
+# On the isolated desktop, the state of the user's desktop it was opened from (isolated.ps1).
+$desk = if ($env:SIDEHAND_HOME_DESKTOP) { $env:SIDEHAND_HOME_DESKTOP } else { [SidehandNative]::DesktopName() }
 $stateDir = Join-Path $env:LOCALAPPDATA 'sidehand'
 $stopPath = Join-Path $stateDir "stop-$desk"
 $activityPath = Join-Path $stateDir "activity-$desk.txt"
 $indicatorMutex = "Local\SidehandIndicator-$desk"
 $activity = $false
 function Start-Indicator {
-  if ($env:SIDEHAND_INDICATOR -eq '0') { return }
+  # Started from the isolated desktop it would show there, unseen; an open one still shows its actions.
+  if ($env:SIDEHAND_INDICATOR -eq '0' -or $env:SIDEHAND_ISOLATED) { return }
   $m = $null
   if ([Threading.Mutex]::TryOpenExisting($indicatorMutex, [ref]$m)) { $m.Dispose(); return }
   Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Op', 'indicator'
@@ -123,6 +127,20 @@ $isOurs = {
   $p -ne 0 -and ($p -eq $appPid -or ((Get-Process -Id $p -ErrorAction SilentlyContinue).Path -eq $appPath))
 }
 $findNew = { Get-WindowList | Where-Object { $before -notcontains $_.Handle -and ($appPid -eq 0 -or $_.ProcessId -eq $appPid) } | Select-Object -First 1 }
+# Every top-level window on this process's desktop, shown or not (for isolated.ps1's desktop, SIDEHAND_ISOLATED).
+function Get-DesktopWindows {
+  $all = New-Object System.Collections.Generic.List[IntPtr]
+  [void][SidehandNative]::EnumWindows([SidehandNative+EnumProc]{ param($h, $l) $all.Add($h); $true }, [IntPtr]::Zero)
+  $all
+}
+# The ref cache is shared with the worker on the user's desktop: refs of a window there are its to act on.
+if ($env:SIDEHAND_ISOLATED -and $Op -in 'act', 'target' -and $Ref) {
+  $refFile = if ($Ref -like '@*') { $SidehandPointsPath } else { $cachePath }
+  if (Test-Path $refFile) {
+    $h = [long](Get-Content $refFile -TotalCount 1)
+    if (-not (Get-DesktopWindows | Where-Object { $_.ToInt64() -eq $h })) { $acting = $false; throw "the window of these refs is not on the isolated desktop" } # not an action: the user's worker takes it
+  }
+}
 try {
   switch ($Op) {
     'tree' {
@@ -202,20 +220,36 @@ try {
       # Many apps bring themselves forward a moment after their window shows: a hidden PowerShell keeps
       # watching until 3 s after that, so this call returns once the window is there. Started now so it is
       # ready by then; the state goes through the environment, so nothing is quoted.
-      $env:SIDEHAND_LAUNCH_WATCH = ConvertTo-Json -Compress @{ before = @($before | ForEach-Object { $_.ToInt64() }); user = $fg.Before.ToInt64(); since = $fg.Since; app = $appPid; path = $appPath }
-      try { Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Op', 'watch' }
-      finally { Remove-Item Env:SIDEHAND_LAUNCH_WATCH }
+      # On the isolated desktop there is no user's window to protect.
+      if (-not $env:SIDEHAND_ISOLATED) {
+        $env:SIDEHAND_LAUNCH_WATCH = ConvertTo-Json -Compress @{ before = @($before | ForEach-Object { $_.ToInt64() }); user = $fg.Before.ToInt64(); since = $fg.Since; app = $appPid; path = $appPath }
+        try { Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Op', 'watch' }
+        finally { Remove-Item Env:SIDEHAND_LAUNCH_WATCH }
+      }
       for ($i = 0; $i -lt 20 -and -not $new; $i++) {
         if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
         $new = & $findNew
         if (-not $new) { Start-Sleep -Milliseconds 500 }
       }
-      if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
-      $name = if ($new) { $logHwnd = $new.Handle; $new.Title } else { $Value }
-      $msg = if ($new) { "ok launched: $name" } else { "ok started $Value (pid $appPid); no new window yet" }
-      if ([SidehandNative]::GetForegroundWindow() -ne $fg.Before -and (& $isOurs)) { $msg += "`nWARNING: the app took the foreground while starting" }
-      elseif ($gaveBack) { $msg += "`nnote: $name came forward; the user's window was put back in front" }
-      $msg + "`nnote: for 3 s more, a background watch puts the user's window back in front if $name comes forward"
+      if ($env:SIDEHAND_ISOLATED) {
+        if (-not $new) {
+          # A single-instance app (Edge, Office, ...) passes the request to its running instance and exits.
+          $here = @(Get-DesktopWindows | ForEach-Object { $p = [uint32]0; [void][SidehandNative]::GetWindowThreadProcessId($_, [ref]$p); $p })
+          $exe = [IO.Path]::GetFileNameWithoutExtension($appPath)
+          $outside = @(Get-Process -Name $exe -ErrorAction SilentlyContinue | Where-Object { $here -notcontains $_.Id })
+          if ($outside.Count) { throw "not isolated: no window of $Value opened on the isolated desktop. $exe is already running outside it (pid $(($outside | ForEach-Object Id) -join ', ')): a single-instance app hands the request to that instance, so its window may be on the user's screen" }
+          throw "not isolated: no window of $Value opened on the isolated desktop in 10 s (pid $appPid); if it is still starting, list_windows shows it later tagged [isolated]"
+        }
+        $logHwnd = $new.Handle
+        "ok launched on the isolated desktop: $($new.Title) ($('0x{0:X8}' -f $new.Handle.ToInt64()))`nnote: it never shows on the user's screen; read it with tree, see it with capture window"
+      } else {
+        if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
+        $name = if ($new) { $logHwnd = $new.Handle; $new.Title } else { $Value }
+        $msg = if ($new) { "ok launched: $name" } else { "ok started $Value (pid $appPid); no new window yet" }
+        if ([SidehandNative]::GetForegroundWindow() -ne $fg.Before -and (& $isOurs)) { $msg += "`nWARNING: the app took the foreground while starting" }
+        elseif ($gaveBack) { $msg += "`nnote: $name came forward; the user's window was put back in front" }
+        $msg + "`nnote: for 3 s more, a background watch puts the user's window back in front if $name comes forward"
+      }
     }
     'watch' {
       $w = $env:SIDEHAND_LAUNCH_WATCH | ConvertFrom-Json

@@ -33,6 +33,10 @@ Windows and apps
   sidehand window <title> <move x,y | resize w,h | minimize | restore | close>
                                                   restore brings a minimized window back behind yours
   sidehand launch <app|path|url> [args]           start an app without it taking your focus
+  sidehand launch --isolated <app> [args]         experimental: start it on a hidden desktop of its own, never on your
+                                                  screen; tree/act/ocr/wait/window/capture reach it, windows tags it
+                                                  [isolated]; it runs until \`sidehand isolated close\`
+  sidehand isolated close                         end every app on that hidden desktop
   sidehand clipboard [text]                       read the clipboard, or replace it with text
 Capture and edit
   sidehand capture <full|active|monitor|region|window> [--title t] [--monitor n]
@@ -80,6 +84,7 @@ const ARGS = {
 		h: { type: "string" },
 		out: { type: "string" },
 		"bring-to-front": { type: "boolean" },
+		isolated: { type: "boolean" },
 		style: { type: "string" },
 		scale: { type: "string" },
 		"max-w": { type: "string" },
@@ -117,7 +122,11 @@ const ops = {
 		return cmd.actionLog(n);
 	},
 	window: () => (need(2, "window <title> <action> [value]"), cmd.window({ title: p[1], action: p[2], value: p.slice(3).join(" ") || undefined })),
-	launch: () => (need(1, "launch <app> [args]"), cmd.launch({ app: p[1], args: p.slice(2).join(" ") })),
+	launch: () => (need(1, "launch <app> [args]"), cmd.launch({ app: p[1], args: p.slice(2).join(" "), isolated: f.isolated })),
+	isolated: () => {
+		if (p[1] !== "close") throw new Error("usage: sidehand isolated close");
+		return cmd.closeIsolated();
+	},
 	clipboard: () => cmd.clipboard({ text: p.length > 1 ? p.slice(1).join(" ") : undefined }),
 	capture: () =>
 		(need(1, "capture <mode>"),
