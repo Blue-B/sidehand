@@ -100,6 +100,39 @@ function Get-WindowList {
   return $list
 }
 
+# The action log: one JSON line per acting operation in %LOCALAPPDATA%\sidehand\actions.log, the same file
+# from WSL and Windows, read by `sidehand log`. Never the typed text, clipboard text or a field value: only
+# its length, and quoted parts of an error (they can quote a value) are cut. Above $SidehandLogMax bytes
+# the file becomes actions.1.log (replacing the older one). SIDEHAND_LOG=0 turns it off.
+$SidehandLogMax = 1MB
+function Write-ActionLog([string]$action, [IntPtr]$hwnd, [string]$target, [string]$value, [string]$err, [uint32]$procId = 0) {
+  if ($env:SIDEHAND_LOG -eq '0') { return }
+  try {
+    $title = ''
+    if ($hwnd -ne [IntPtr]::Zero) {
+      $sb = New-Object System.Text.StringBuilder 512
+      [void][SidehandNative]::GetWindowText($hwnd, $sb, $sb.Capacity); $title = $sb.ToString()
+      [void][SidehandNative]::GetWindowThreadProcessId($hwnd, [ref]$procId)
+    }
+    $entry = [ordered]@{ time = [DateTimeOffset]::Now.ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); session = [string]$env:SIDEHAND_SESSION
+      window = $title; hwnd = '0x{0:x}' -f $hwnd.ToInt64(); process = $(if ($procId) { [string](Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName } else { '' })
+      action = $action; control = [string]$target }
+    if ($value) { $entry.chars = $value.Length }
+    $entry.ok = -not $err
+    if ($err) { $e = (($err -split "`r?`n")[0] -replace '"[^"]*"', '"..."'); $entry.error = $e.Substring(0, [Math]::Min(200, $e.Length)) }
+    $line = (ConvertTo-Json -Compress $entry) + "`n"
+    $dir = Join-Path $env:LOCALAPPDATA 'sidehand'; $path = Join-Path $dir 'actions.log'
+    [void][IO.Directory]::CreateDirectory($dir)
+    # Another session may be writing at the same moment: try again briefly, then give up (an action never fails over its log line).
+    for ($i = 0; $i -lt 5; $i++) {
+      try {
+        if ((Test-Path $path) -and (Get-Item $path).Length -gt $SidehandLogMax) { Move-Item -Force $path (Join-Path $dir 'actions.1.log') }
+        [IO.File]::AppendAllText($path, $line); return
+      } catch { Start-Sleep -Milliseconds 20 }
+    }
+  } catch { }
+}
+
 # -Title is a handle from list_windows (0x...), an exact title, or else part of a title. Exact first:
 # several agents may each open a window whose title is part of another's. IndexOf, not -like: titles
 # hold [ and ], and PowerShell 5.1's WildcardPattern.Escape leaves a backtick unescaped.

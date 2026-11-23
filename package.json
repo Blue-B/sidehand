@@ -48,7 +48,7 @@
     ]
   },
   "scripts": {
-    "test": "node test/quote.mjs && node test/guard.mjs && node test/outdir.mjs && node test/mcp.mjs && node test/paths.mjs && node test/select-window.mjs && node test/ocr-expiry.mjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/isolated/run.ps1"
+    "test": "node test/quote.mjs && node test/guard.mjs && node test/outdir.mjs && node test/mcp.mjs && node test/paths.mjs && node test/select-window.mjs && node test/ocr-expiry.mjs && node test/action-log.mjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/isolated/run.ps1"
   },
   "repository": {
     "type": "git",

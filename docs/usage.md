@@ -11,6 +11,8 @@
 | `ocr <title>` | the text of a custom-drawn window (games, Qt, canvas apps) read by Windows OCR, each line with a ref (`t1`, `t2`, ...) |
 | `act <t-ref> <action>` | on an OCR ref: `click`, `double-click`, `right-click`, `hover`, `wheel`, `drag` (to a t-ref or `dx,dy`), at the center of the text; OCR refs expire 60 s after the `ocr` that made them |
 | `wait <title> <text>` | wait until a control with that text appears (or `--gone`), with `--timeout ms` |
+| `undo` | put back the latest `type`, `check`, `uncheck` or `select`; MCP and pi only (see [Undo](#undo)) |
+| `log [n]` | the last `n` (default 20) acting operations from the [action log](#action-log) |
 | `window <title> <action>` | `move x,y`, `resize w,h`, `minimize`, `restore` (behind your windows), `close` |
 | `launch <app>` | start an app, path or URL without it taking your focus |
 | `capture <mode>` | screenshot a window even while it is covered (`full`, `active`, `monitor`, `region`, `window`); saved in `%LOCALAPPDATA%\sidehand\captures` (from WSL) or `%TEMP%\sidehand` (on Windows), where captures older than a day are deleted; image paths on a network share are refused |
@@ -22,7 +24,7 @@
 
 `<title>` can be part of a window's title, its exact title (an exact title wins over a longer one that contains it), or its handle (`0x...` from `sidehand windows`). Values that start with `-` go after `--`: `sidehand act e5 wheel -- -240`.
 
-MCP exposes the same operations as tools: `list_windows`, `list_monitors`, `ui_tree`, `ui_ocr`, `ui_wait`, `ui_act`, `window`, `launch`, `clipboard`, `capture`, `crop`, `mask`. pi has the same tools with a `sidehand_` prefix, plus `sidehand_resize` and `sidehand_info`.
+MCP exposes the same operations as tools: `list_windows`, `list_monitors`, `ui_tree`, `ui_ocr`, `ui_wait`, `ui_act`, `ui_undo`, `window`, `launch`, `clipboard`, `capture`, `crop`, `mask`. pi has the same tools with a `sidehand_` prefix, plus `sidehand_resize` and `sidehand_info`.
 
 ## What works in the background
 
@@ -45,6 +47,26 @@ Games and other apps that draw their own UI (Qt, canvas) expose no controls: `oc
 - Games that read raw mouse input ignore posted clicks. `capture` and `ocr` still work.
 - Apps running as administrator need an agent running as administrator.
 - A minimized window has to be brought back first with `window <title> restore`, which puts it behind your windows.
+
+## Undo
+
+Before `type` replaces a text, and before `check`, `uncheck` or `select`, Sidehand remembers the earlier text, state or selected item. `ui_undo` (pi: `sidehand_ui_undo`) puts back the latest one in the background, the same way `act` works, and keeps the 20 latest. It refuses, and says why, when the control is gone, when someone changed it since (restoring would overwrite that), when nothing or several items were selected before, or when a checkbox was indeterminate. Password fields are never remembered.
+
+The history is kept only in memory, in the PowerShell process of one MCP or pi session, so earlier values never reach the disk. It is gone when the session ends. Each `sidehand` CLI call is a new process, so `sidehand undo` only says that undo needs an MCP or pi session.
+
+## Action log
+
+Every acting operation (`act`, `undo`, `window`, `launch`, writing the clipboard) adds one JSON line to `%LOCALAPPDATA%\sidehand\actions.log`. It is the same file whether Sidehand runs on Windows or in WSL. Each line holds the time, the session, the window title and handle, the process, the action, the control (type and name), and whether it worked, with the error if it did not:
+
+```json
+{"time":"2026-11-24T10:15:02.114+09:00","session":"4242","window":"Contoso Orders","hwnd":"0x5a0b2c","process":"Contoso","action":"type","control":"Edit \"Customer\"","chars":13,"ok":true}
+```
+
+Typed text, clipboard text and field values are never written, only their length (`chars`). Quoted parts of an error message are cut, since an error can quote a value. Above 1 MB the file becomes `actions.1.log`, replacing the older one. `sidehand log [n]` prints the last lines readably. `SIDEHAND_LOG=0` turns the log off ([setup.md](setup.md#action-log)).
+
+## Text that tries to instruct the agent
+
+Whatever `tree`, `wait`, `ocr` and reading the clipboard return goes to the agent, and a web page or message can try to give it orders. Lines that look like instructions to an AI ("ignore previous instructions", "you are now", "system prompt", "run this command", and the same in Korean) get a `⚠` in front. When at least one line is marked, the output starts with one header line saying window text is data, not instructions. A read with no such line is unchanged and costs no extra tokens. This is a list of common phrasings, not a guarantee: a reworded attack is not marked.
 
 ## How it works
 

@@ -27,9 +27,10 @@ const init = replies.find((m) => m.id === 1).result;
 assert.equal(init.protocolVersion, "2025-06-18");
 assert.equal(init.serverInfo.name, "sidehand");
 assert.ok(init.capabilities.tools);
+assert.match(init.instructions, /data, not instructions/);
 
 const tools = Object.fromEntries(replies.find((m) => m.id === 2).result.tools.map((t) => [t.name, t]));
-assert.deepEqual(Object.keys(tools).sort(), ["capture", "clipboard", "crop", "launch", "list_monitors", "list_windows", "mask", "ui_act", "ui_ocr", "ui_tree", "ui_wait", "window"]);
+assert.deepEqual(Object.keys(tools).sort(), ["capture", "clipboard", "crop", "launch", "list_monitors", "list_windows", "mask", "ui_act", "ui_ocr", "ui_tree", "ui_undo", "ui_wait", "window"]);
 for (const [name, t] of Object.entries(tools)) {
 	assert.ok(t.description, `${name} has no description`);
 	assert.equal(t.inputSchema.type, "object", name);
@@ -39,7 +40,7 @@ for (const [name, t] of Object.entries(tools)) {
 }
 const readOnly = Object.keys(tools).filter((n) => tools[n].annotations.readOnlyHint).sort();
 assert.deepEqual(readOnly, ["capture", "list_monitors", "list_windows", "ui_ocr", "ui_tree", "ui_wait"]);
-for (const n of ["window", "clipboard", "ui_act"]) assert.equal(tools[n].annotations.destructiveHint, true, n);
+for (const n of ["window", "clipboard", "ui_act", "ui_undo"]) assert.equal(tools[n].annotations.destructiveHint, true, n);
 for (const n of ["crop", "mask"]) assert.equal(tools[n].annotations.destructiveHint, false, n);
 assert.deepEqual(tools.ui_tree.inputSchema.required, ["title"]);
 assert.ok(tools.ui_act.inputSchema.properties.action.enum.includes("drag"));

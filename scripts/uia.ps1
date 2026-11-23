@@ -8,6 +8,7 @@
     -Op window -Title "<substring>" -Action move|resize|minimize|restore|close [-Value "x,y" | "w,h"]
     -Op launch -Value <path, app name, document or URL> [-Arguments "..."]
     -Op clipboard [-Value text]    read the clipboard, or replace it with -Value
+    -Op undo                       put back the latest type/check/uncheck/select of this process (the MCP or pi worker)
     -Op watch                      internal: launch's background foreground watch (state in SIDEHAND_LAUNCH_WATCH)
   -Title is a handle from list.ps1 (0x...), an exact title, or else part of one (case-insensitive).
   Refs from the last tree/wait/ocr call are cached in %TEMP%\sidehand-uia[-<SIDEHAND_SESSION>].txt as UIA RuntimeIds.
@@ -15,7 +16,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('tree','wait','ocr','act','window','launch','clipboard','watch')]
+  [ValidateSet('tree','wait','ocr','act','undo','window','launch','clipboard','watch')]
   [string]$Op = 'tree',
   [string]$Title = "",
   [int]$MaxNodes = 300,
@@ -40,6 +41,18 @@ $ErrorActionPreference = 'Stop'
 # running side by side never read each other's refs.
 $cachePath = Join-Path $env:TEMP $(if ($env:SIDEHAND_SESSION) { "sidehand-uia-$($env:SIDEHAND_SESSION).txt" } else { 'sidehand-uia.txt' })
 
+# Every acting operation leaves a line in the action log (Write-ActionLog in lib.ps1), failed ones too.
+$acting = $Op -in 'act', 'undo', 'window', 'launch' -or ($Op -eq 'clipboard' -and $Set)
+$logHwnd = [IntPtr]::Zero; $logPid = 0
+function Write-OpLog([string]$err) {
+  if (-not $acting) { return }
+  $name = switch ($Op) { 'act' { $Action } 'window' { "window $Action" } 'clipboard' { 'clipboard set' } default { $Op } }
+  $target = ''
+  if ($Op -in 'act', 'undo' -and ('SidehandUia' -as [type])) { $script:logHwnd = [SidehandUia]::LastWindow; $target = [SidehandUia]::LastTarget }
+  Write-ActionLog $name $logHwnd $target $(if ($Op -in 'act', 'clipboard') { $Value }) $err $logPid
+}
+trap { if ($acting) { Write-OpLog $_.Exception.Message }; break }
+
 function Find-Window {
   if (-not $Title) { throw "$Op requires -Title" }
   Select-Window $Title
@@ -48,13 +61,14 @@ function Find-Window {
 if ($Op -eq 'clipboard') {
   Assert-Unrestricted 'the clipboard'
   # The clipboard is shared with the user: reading is harmless, writing replaces what they copied.
-  if ($Set) { Set-Clipboard -Value $Value; "ok clipboard set ($($Value.Length) chars); this replaced the user's clipboard" }
+  if ($Set) { Set-Clipboard -Value $Value; Write-OpLog; "ok clipboard set ($($Value.Length) chars); this replaced the user's clipboard" }
   else { $c = Get-Clipboard -Raw; if ($null -eq $c) { '(clipboard holds no text)' } else { $c } }
   return
 }
 Import-UiaEngine
 # Surface the engine's own message instead of PowerShell's "Exception calling ..." wrapper.
-trap [System.Management.Automation.MethodInvocationException] { throw $_.Exception.InnerException.Message }
+trap [System.Management.Automation.MethodInvocationException] { $m = $_.Exception.InnerException.Message; Write-OpLog $m; throw $m }
+[SidehandUia]::LastWindow = [IntPtr]::Zero; [SidehandUia]::LastTarget = $null
 # launch/watch: the window in front is the launched app's if it belongs to the new process or to an
 # already running instance of the same exe (that one brings itself forward despite the lock). Any other
 # window (Start, a credential prompt, an app the user opened) means the user switched: leave it alone.
@@ -124,6 +138,7 @@ switch ($Op) {
   }
   'window' {
     $w = Find-Window
+    $logHwnd = $w.Handle
     [SidehandUia]::Window($w.Handle.ToInt64(), $w.Title, $Action, $Value)
   }
   'launch' {
@@ -131,7 +146,7 @@ switch ($Op) {
     if (-not $Value) { throw "launch requires -Value" }
     $before = @(Get-WindowList | ForEach-Object { $_.Handle })
     $fg = New-Object 'SidehandUia+Foreground'
-    $appPid = [SidehandUia]::Launch($Value, $Arguments)
+    $appPid = $logPid = [SidehandUia]::Launch($Value, $Arguments)
     $new = $null
     $gaveBack = [SidehandUia]::LaunchGaveBack -gt 0
     $appPath = try { (Get-Command $Value -ErrorAction Stop).Source } catch { $Value }
@@ -147,7 +162,7 @@ switch ($Op) {
       if (-not $new) { Start-Sleep -Milliseconds 500 }
     }
     if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
-    $name = if ($new) { $new.Title } else { $Value }
+    $name = if ($new) { $logHwnd = $new.Handle; $new.Title } else { $Value }
     $msg = if ($new) { "ok launched: $name" } else { "ok started $Value (pid $appPid); no new window yet" }
     if ([SidehandNative]::GetForegroundWindow() -ne $fg.Before -and (& $isOurs)) { $msg += "`nWARNING: the app took the foreground while starting" }
     elseif ($gaveBack) { $msg += "`nnote: $name came forward; the user's window was put back in front" }
@@ -173,4 +188,6 @@ switch ($Op) {
     }
     [SidehandUia]::Act($cachePath, $Ref, $Action, $Value, [bool]$AllowForeground)
   }
+  'undo' { [SidehandUia]::Undo() }
 }
+Write-OpLog

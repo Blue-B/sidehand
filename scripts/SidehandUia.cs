@@ -205,7 +205,7 @@ public static class SidehandUia {
   static IUIAutomationElement Resolve(string cachePath, string refId, out IntPtr hwnd) {
     if (!File.Exists(cachePath)) throw new InvalidOperationException("no cached refs; run the tree first");
     var lines = File.ReadAllLines(cachePath);
-    hwnd = new IntPtr(long.Parse(lines[0]));
+    hwnd = LastWindow = new IntPtr(long.Parse(lines[0]));
     foreach (var l in lines) {
       var parts = l.Split('\t');
       if (parts.Length != 2 || parts[0] != refId) continue;
@@ -236,7 +236,7 @@ public static class SidehandUia {
     if (DateTime.UtcNow - File.GetLastWriteTimeUtc(cachePath) > TimeSpan.FromSeconds(60))
       throw new InvalidOperationException("OCR refs expire after 60 s, since other content may be at that spot by now; run ocr again");
     var lines = File.ReadAllLines(cachePath);
-    hwnd = new IntPtr(long.Parse(lines[0]));
+    hwnd = LastWindow = new IntPtr(long.Parse(lines[0]));
     foreach (var l in lines) {
       var parts = l.Split('\t');
       if (parts.Length != 3 || parts[0] != refId) continue;
@@ -621,18 +621,34 @@ public static class SidehandUia {
     return "press " + value;
   }
 
+  // For the action log (uia.ps1): the window and control the last act or undo worked on.
+  public static IntPtr LastWindow;
+  public static string LastTarget;
+
+  static string Label(IUIAutomationElement e) {
+    var n = Short(e.CachedName, 60);
+    return TypeOf(e) + (n.Length > 0 ? " \"" + n + "\"" : "");
+  }
+
   public static string Act(string cachePath, string refId, string action, string value, bool allowForeground) {
+    return Act(cachePath, refId, action, value, allowForeground, null, IntPtr.Zero);
+  }
+
+  // `given`: the element undo restores, found already; nothing is remembered for undo then.
+  static string Act(string cachePath, string refId, string action, string value, bool allowForeground, IUIAutomationElement given, IntPtr hwnd) {
     if (action == "focus" && !allowForeground)
       throw new InvalidOperationException("focus takes the user's foreground and keyboard; needs the allow-foreground flag (user consent)");
-    IntPtr hwnd;
-    IUIAutomationElement el = null;
+    IUIAutomationElement el = given;
     var spot = new POINT(); string text = null;
     // An OCR ref is only a point in a custom-drawn window: mouse messages are all that reach it.
     bool drawn = refId.StartsWith("t");
     if (drawn && action != "click" && !Pointer.Contains(action))
       throw new InvalidOperationException("an OCR ref takes click, double-click, right-click, hover, wheel or drag");
     if (drawn) spot = ResolveText(cachePath, refId, out hwnd, out text);
-    else el = Resolve(cachePath, refId, out hwnd);
+    else if (given == null) el = Resolve(cachePath, refId, out hwnd);
+    else LastWindow = hwnd;
+    LastTarget = drawn ? "Text \"" + Short(text, 60) + "\"" : Label(el);
+    var change = drawn || given != null ? null : Remember(el, hwnd, refId, action, value);
     bool posted = drawn || Pointer.Contains(action) || action == "press";
     uint targetPid; GetWindowThreadProcessId(hwnd, out targetPid);
     var fg = new Foreground();
@@ -702,6 +718,10 @@ public static class SidehandUia {
       if (fg.Returned > 0) throw new InvalidOperationException(e.Message + " (the target app had come forward; the user's window was put back in front)", e);
       throw;
     } finally { fg.StopWatch(); }
+    if (change != null) {
+      try { change.After = State(change.El, action); } catch (COMException) { }
+      if (change.After != null && change.After != change.Before) { Changes.Add(change); if (Changes.Count > 20) Changes.RemoveAt(0); }
+    }
     string after;
     if (drawn) after = refId + " \"" + text + "\" at " + spot.X + "," + spot.Y;
     else try { after = Describe(el.BuildUpdatedCache(Request()), refId, false) ?? refId; } catch (COMException) { after = refId + " (element gone after action)"; }
@@ -714,6 +734,71 @@ public static class SidehandUia {
     else if (fg.Returned > 0 && borrowed) result += "\nnote: the window had the foreground for the keys; the user's window was put back in front";
     else if (fg.Returned > 0) result += "\nnote: the target app came forward while handling this" + (fg.Ms >= 0 ? " (for at most " + fg.Ms + " ms)" : "") + "; the user's window was put back in front";
     return result;
+  }
+
+  // --- undo ----------------------------------------------------------------------------------------
+  // The state before each type, check, uncheck and select of this session (one process: the MCP or pi
+  // worker), newest last. In memory only, so earlier field values never reach the disk.
+  sealed class Change { public IntPtr Hwnd; public IUIAutomationElement El; public string Ref, Action, Target, Before, After; }
+  static readonly List<Change> Changes = new List<Change>();
+
+  // What undo restores: the text for type, the toggle state for check/uncheck, the selected item(s) of the
+  // list for select. null: nothing to restore (a password field, no readable value).
+  static string State(IUIAutomationElement el, string action) {
+    if (action == "check" || action == "uncheck") {
+      var tog = Pattern<IUIAutomationTogglePattern>(el, PToggle);
+      return tog == null ? null : tog.CurrentToggleState.ToString();
+    }
+    if (action == "select") {
+      var sp = Pattern<IUIAutomationSelectionPattern>(el, 10001 /* Selection */);
+      if (sp != null) {
+        var sel = sp.GetCurrentSelection(); var names = new List<string>();
+        for (int i = 0; sel != null && i < sel.Length; i++) names.Add(sel.GetElement(i).CurrentName ?? "");
+        return string.Join("\n", names);
+      }
+    } else if (action != "type" || Flag(el, Password)) return null;
+    var vp = Pattern<IUIAutomationValuePattern>(el, PValue);
+    return vp == null ? null : vp.CurrentValue ?? "";
+  }
+
+  // select on an item changes its list: the list is what undo puts back.
+  static Change Remember(IUIAutomationElement el, IntPtr hwnd, string refId, string action, string value) {
+    if (action != "type" && action != "check" && action != "uncheck" && action != "select") return null;
+    try {
+      var target = el;
+      if (action == "select" && string.IsNullOrEmpty(value)) {
+        var si = Pattern<IUIAutomationSelectionItemPattern>(el, PSelectItem);
+        target = si == null ? null : si.CurrentSelectionContainer;
+        if (target == null) return null;
+        target = target.BuildUpdatedCache(Request());
+      }
+      var before = State(target, action);
+      return before == null ? null : new Change { Hwnd = hwnd, El = target, Ref = refId, Action = action, Target = Label(target), Before = before };
+    } catch (COMException) { return null; }
+  }
+
+  // Puts back the latest remembered change through the same path as act, if the control still exists and
+  // nobody changed it since (restoring would overwrite their change).
+  public static string Undo() {
+    if (Changes.Count == 0) throw new InvalidOperationException("nothing to undo in this session (type, check, uncheck and select are remembered; password fields are not)");
+    var c = Changes[Changes.Count - 1];
+    Changes.RemoveAt(Changes.Count - 1);
+    LastWindow = c.Hwnd; LastTarget = c.Target;
+    var what = c.Action + " on " + c.Target;
+    string now = null;
+    try { if (IsWindow(c.Hwnd)) now = State(c.El, c.Action); } catch (COMException) { }
+    if (now == null) throw new InvalidOperationException("could not undo " + what + ": the control is gone");
+    if (now != c.After) throw new InvalidOperationException("did not undo " + what + ": it changed since (by the user or the app), and restoring would overwrite that");
+    string action = c.Action, value = c.Before;
+    if (action == "check" || action == "uncheck") {
+      if (c.Before == ToggleState.ToggleState_Indeterminate.ToString()) throw new InvalidOperationException("could not undo " + what + ": it was indeterminate before, which a toggle cannot set back");
+      action = c.Before == ToggleState.ToggleState_On.ToString() ? "check" : "uncheck"; value = null;
+    } else if (action == "select" && (c.Before.Length == 0 || c.Before.Contains("\n")))
+      throw new InvalidOperationException("could not undo " + what + ": " + (c.Before.Length == 0 ? "nothing" : "several items") + " was selected before");
+    string r;
+    try { r = Act(null, c.Ref, action, value, false, c.El, c.Hwnd); }
+    catch (Exception e) { throw new InvalidOperationException("could not undo " + what + ": " + e.Message, e); }
+    return "ok undo " + c.Action + ": " + r.Substring(3);
   }
 
   // Remembers the user's foreground window when an operation starts. If an app took it meanwhile,
