@@ -67,6 +67,9 @@ function Test-Allowed([string]$title) {
   foreach ($p in $SidehandAllow) { if ($title -like $(if ($p -match '[*?]') { $p } else { "*$p*" })) { return $true } }
   return $false
 }
+# Point refs (@x,y) are pixels of the session's last window capture: capture.ps1 writes how they map
+# onto that window here, act reads it.
+$SidehandPointsPath = Join-Path $env:TEMP $(if ($env:SIDEHAND_SESSION) { "sidehand-points-$($env:SIDEHAND_SESSION).txt" } else { 'sidehand-points.txt' })
 function Assert-Unrestricted([string]$what) {
   if ($SidehandAllow.Count) { throw "$what is off while SIDEHAND_ALLOW limits sidehand to: $($SidehandAllow -join '; ')" }
 }

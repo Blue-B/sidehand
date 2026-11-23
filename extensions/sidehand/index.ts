@@ -4,6 +4,7 @@
  *   sidehand_list_windows / sidehand_list_monitors   find targets
  *   sidehand_ui_tree / sidehand_ui_wait / sidehand_ui_act   read and operate controls without taking the user's focus
  *   sidehand_ui_ocr                                          text of custom-drawn windows, with refs ui_act can click
+ *   (sidehand_ui_act also takes @x,y: a pixel of the last sidehand_capture mode=window image)
  *   sidehand_window / sidehand_launch / sidehand_clipboard   windows, apps and the clipboard
  *   sidehand_capture / _crop / _mask / _resize / _info     screenshots and privacy masking
  *
@@ -161,7 +162,7 @@ export default function sidehand(pi: ExtensionAPI): void {
 		name: "sidehand_ui_act",
 		label: "Act on a control",
 		description:
-			"Act on a ref from the latest sidehand_ui_tree/sidehand_ui_wait/sidehand_ui_ocr without moving the mouse or the user's focus. " +
+			"Act on a ref from the latest sidehand_ui_tree/sidehand_ui_wait/sidehand_ui_ocr, or on a point \"@x,y\" of the latest window capture, without moving the mouse or the user's focus. " +
 			"click | type (replace text) | check | uncheck | select (or value=<item> inside a list/combo) | expand | collapse | scroll (into view) | " +
 			"right-click | double-click | hover | wheel (value 'down 3') | drag (value=<ref> or 'dx,dy') | press (value 'Enter', 'ctrl+a', 'Down Down Enter'). " +
 			"Classic controls get window messages, others UI Automation or posted input; the result warns if the app still came forward. " +
@@ -170,9 +171,9 @@ export default function sidehand(pi: ExtensionAPI): void {
 			"If an action fails, never fall back to moving the real mouse or bringing the window forward yourself; tell the user. " +
 			"Refs expire when the tree is read again.",
 		parameters: Type.Object({
-			ref: Type.String({ description: "e.g. e12, or t3 from sidehand_ui_ocr (click, double-click, right-click, hover, wheel, drag)" }),
+			ref: Type.String({ description: "e.g. e12, t3 from sidehand_ui_ocr, or @x,y = pixel x,y of the image the last sidehand_capture mode=window returned (t and @ refs: click, double-click, right-click, hover, wheel, drag)" }),
 			action: Type.Union(cmd.ACTIONS.map((a: string) => Type.Literal(a))),
-			value: Type.Optional(Type.String({ description: "text for type, item for select, keys for press, target ref (e or t) or 'dx,dy' for drag, direction for wheel" })),
+			value: Type.Optional(Type.String({ description: "text for type, item for select, keys for press, target ref (e, t or @x,y) or 'dx,dy' for drag, direction for wheel" })),
 			allow_foreground: Type.Optional(Type.Boolean({ description: "permit taking the user's foreground window" })),
 		}),
 		executionMode: "sequential",
@@ -224,6 +225,7 @@ export default function sidehand(pi: ExtensionAPI): void {
 			"Capture the Windows screen as PNG. To read or operate an app, try sidehand_ui_tree first (text, far fewer tokens). " +
 			"Modes: full (all monitors), region (x,y,w,h), monitor (index), active (foreground window), " +
 			"window (title substring; PrintWindow, works while the window is covered). " +
+			"After mode=window, sidehand_ui_act ref \"@x,y\" acts at pixel x,y of the returned image (posted mouse messages; for 60 s), e.g. an icon in a custom-drawn app. " +
 			"A minimized window is refused because restoring it takes the user's focus; bring_to_front=true only with consent.",
 		parameters: Type.Object({
 			mode: Type.Union([Type.Literal("full"), Type.Literal("region"), Type.Literal("monitor"), Type.Literal("active"), Type.Literal("window")]),
@@ -241,7 +243,11 @@ export default function sidehand(pi: ExtensionAPI): void {
 		execute: async (_id, p, signal) =>
 			reply(
 				await cmd.capture(
-					{ mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out },
+					{
+						mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out,
+						// Point refs are pixels of the image the model sees: image() downscales it only with ffmpeg.
+						shownMaxEdge: p.return_image !== false && process.env.SIDEHAND_NO_DOWNSCALE !== "1" && ffmpeg() ? EMBED_MAX_EDGE : undefined,
+					},
 					signal,
 				),
 				p.return_image !== false,

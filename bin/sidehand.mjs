@@ -18,12 +18,13 @@ Read
                                                   wait until an element containing <text> appears (or disappears)
   sidehand ocr <title>                            text lines read by Windows OCR, each with a ref (t1, t2, ...);
                                                   for games and custom-drawn apps whose tree shows almost nothing
-Act (refs come from the last tree/wait/ocr); nothing here takes your focus unless noted
+Act (refs come from the last tree/wait/ocr, or @x,y from the last capture window); nothing here takes your focus unless noted
   sidehand act <ref> <action> [value] [--allow-foreground]
       click | type <text> | check | uncheck | select [item] | expand | collapse | scroll
       right-click | double-click | hover | wheel [up|down N] | drag <ref|dx,dy> | press <keys>
         press: Enter, Tab, "Down Down Enter", ctrl+a ... (WPF/browser controls need --allow-foreground, except Enter on a button or link and keys in a browser text field)
       OCR refs (t3) take click, double-click, right-click, hover, wheel and drag (to a t-ref or dx,dy), at the text's center
+      point refs (@x,y) are pixel x,y of the last \`capture window\` image and take the same actions (drag to @x,y too); 60 s
       focus: takes your foreground window, so it needs --allow-foreground
 Windows and apps
   sidehand window <title> <move x,y | resize w,h | minimize | restore | close>

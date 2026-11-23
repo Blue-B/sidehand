@@ -10,6 +10,7 @@
 | `act <ref> <action> [value]` | `type <text>`, `click`, `check`, `uncheck`, `select [item]`, `expand`, `collapse`, `scroll`, `right-click`, `double-click`, `hover`, `wheel [up\|down N]`, `drag <ref\|dx,dy>`, `press <keys>`; `focus` takes your foreground window, so it needs `--allow-foreground` (your consent) |
 | `ocr <title>` | the text of a custom-drawn window (games, Qt, canvas apps) read by Windows OCR, each line with a ref (`t1`, `t2`, ...) |
 | `act <t-ref> <action>` | on an OCR ref: `click`, `double-click`, `right-click`, `hover`, `wheel`, `drag` (to a t-ref or `dx,dy`), at the center of the text; OCR refs expire 60 s after the `ocr` that made them |
+| `act <@x,y> <action>` | on a point of the last `capture window` image (`@x,y` is pixel x,y of the image as the agent was shown it, which the capture result names): the same actions as an OCR ref, with `drag` also to another `@x,y`; for icons and spots that have no control and no text; point refs expire 60 s after the capture and at the next capture |
 | `wait <title> <text>` | wait until a control with that text appears (or `--gone`), with `--timeout ms` |
 | `window <title> <action>` | `move x,y`, `resize w,h`, `minimize`, `restore` (behind your windows), `close` |
 | `launch <app>` | start an app, path or URL without it taking your focus |
@@ -35,7 +36,7 @@ MCP exposes the same operations as tools: `list_windows`, `list_monitors`, `ui_t
 
 WPF ignores mouse messages that do not come from the real mouse, so on WPF a wheel scrolls the nearest scrollable list or view through UI Automation, and a double-click runs the element's default action (Invoke: a grid row starts editing, a button clicks); an app's own double-click handler does not run. Right-click, hover and drag on WPF are refused: UI Automation's context-menu call brings the window forward. WPF and browser pages take keys only while focused, so keys need `--allow-foreground`, except Enter on a button or link, which presses it, and keys in a visible text field of a browser or Electron window, which go in after a posted click on the field. With `--allow-foreground` the window has the foreground only for the keys; your window is put back afterwards. WPF does not tell UI Automation which button is the default, so Enter in a text box needs consent too.
 
-Games and other apps that draw their own UI (Qt, canvas) expose no controls: `ocr` reads their text with the built-in Windows OCR, and `act` clicks, double-clicks, right-clicks, hovers, wheels or drags on it with posted mouse messages.
+Games and other apps that draw their own UI (Qt, canvas) expose no controls: `ocr` reads their text with the built-in Windows OCR, and `act` clicks, double-clicks, right-clicks, hovers, wheels or drags on it with posted mouse messages. For what has no text (an icon in a 3D viewport, a toolbar of pictures), `capture window` and act on a pixel of that image with `@x,y`, the same way. The MCP server and the pi extension show the model a downscaled image (1568 px on the long edge); `@x,y` is a pixel of that downscaled image, and sidehand also converts for display scaling and for apps that are not DPI-aware.
 
 ### Limitations
 
