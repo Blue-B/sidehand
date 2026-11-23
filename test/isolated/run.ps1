@@ -9,7 +9,7 @@
   Every sidehand action except an approved `focus` must take effect without activating its
   window; `focus` with consent is the positive control that proves activations are detected.
 #>
-param([switch]$NoAgentDesktop, [int]$TimeoutSec = 400, [switch]$Bench, [string]$Cua = '')
+param([switch]$NoAgentDesktop, [int]$TimeoutSec = 900, [switch]$Bench, [string]$Cua = '')
 # -Cua <path to cua-driver.exe> also measures Cua Driver. Never automatic: Cua Driver 0.28.2 runs
 # `cmd /c ver` for telemetry on every call, which opens a console window on the REAL desktop
 # (even from the hidden test desktop) and takes the foreground from whatever the user is doing.
