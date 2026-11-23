@@ -40,7 +40,8 @@ const command = [
 	`$real = Join-Path $env:LOCALAPPDATA 'sidehand'`,
 	`. ${psQuote(script("lib.ps1"))}`,
 	// In Windows' %TEMP%: .NET does not load the engine from a \\wsl.localhost path.
-	`$env:LOCALAPPDATA = Join-Path $env:TEMP ${psQuote(session)}; $env:SIDEHAND_SESSION = ${psQuote(session)}; [Console]::WriteLine('DIR ' + $env:LOCALAPPDATA)`,
+	// SIDEHAND_INDICATOR=0: these acts run on the user's desktop, where the indicator would show.
+	`$env:LOCALAPPDATA = Join-Path $env:TEMP ${psQuote(session)}; $env:SIDEHAND_SESSION = ${psQuote(session)}; $env:SIDEHAND_INDICATOR = '0'; [Console]::WriteLine('DIR ' + $env:LOCALAPPDATA)`,
 	// The compiled engine, so uia.ps1 does not compile it again into the temporary folder.
 	`New-Item -ItemType Directory -Force (Join-Path $env:LOCALAPPDATA 'sidehand') | Out-Null; Copy-Item "$real\\*.dll" (Join-Path $env:LOCALAPPDATA 'sidehand') -ErrorAction SilentlyContinue`,
 	`$c = Join-Path $env:TEMP 'sidehand-uia-${session}.txt'; [IO.File]::WriteAllLines($c, [string[]]@('0'))`,

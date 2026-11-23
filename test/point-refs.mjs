@@ -1,6 +1,7 @@
 // Point refs (@x,y) from the last window capture: act refuses a malformed one, one outside the image
 // as shown, and any 60 s after the capture. The record here names no window (handle 0), so nothing
-// could be clicked even if a check failed.
+// could be clicked even if a check failed. SIDEHAND_INDICATOR=0 and SIDEHAND_LOG=0 keep the activity
+// indicator off the user's desktop and these refusals out of their action log.
 // Run: node test/point-refs.mjs (Windows or WSL; starts powershell.exe once, touches no window).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -9,7 +10,7 @@ import { psQuote, script } from "../lib/powershell.mjs";
 const session = `points-test-${process.pid}`;
 const act = (ref) => `try { & ${psQuote(script("uia.ps1"))} -Op act -Ref '${ref}' -Action click } catch { [Console]::WriteLine('ERR ${ref} ' + $_) }`;
 const command =
-	`$env:SIDEHAND_SESSION = ${psQuote(session)}; $c = Join-Path $env:TEMP 'sidehand-points-${session}.txt'; ` +
+	`$env:SIDEHAND_SESSION = ${psQuote(session)}; $env:SIDEHAND_INDICATOR = '0'; $env:SIDEHAND_LOG = '0'; $c = Join-Path $env:TEMP 'sidehand-points-${session}.txt'; ` +
 	// A 1000x800 window shown as a 500x400 image.
 	`[IO.File]::WriteAllLines($c, [string[]]@('0', "1000,800\`t500,400\`t2")); ` +
 	`try { ${act("@1,2,3")}; ${act("@500,10")}; ${act("@10,10")}; ` +
