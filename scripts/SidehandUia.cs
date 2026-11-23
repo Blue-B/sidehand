@@ -919,3 +919,128 @@ public static class SidehandUia {
     return done;
   }
 }
+
+// The activity indicator (uia.ps1 -Op indicator): "Sidehand: <what>" with a Stop/Resume button in the
+// corner of the primary work area, one per desktop. It never takes the foreground or the keyboard:
+// no-activate, topmost tool window (no taskbar button), shown with SetWindowPos(NOACTIVATE), clicks
+// answered MA_NOACTIVATE, and no child controls that could take focus. State is in two files that
+// every Sidehand process on the desktop reads: the stop file (exists while stopped) and the activity
+// file (text; its write time is when the action ended, or a minute ahead while it runs).
+public static class SidehandIndicator {
+  delegate IntPtr WndProc(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct WNDCLASS { public uint style; public WndProc proc; public int clsExtra, wndExtra; public IntPtr inst, icon, cursor, background; public string menu, name; }
+  [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr h; public uint msg; public IntPtr w, l; public uint time; public int x, y; }
+  [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)]
+  struct PAINTSTRUCT { public IntPtr dc; public bool erase; public RECT rc; public bool restore, incUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] reserved; }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern ushort RegisterClass(ref WNDCLASS c);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
+  [DllImport("user32.dll")] static extern IntPtr DefWindowProc(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint min, uint max);
+  [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref MSG m);
+  [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern void PostQuitMessage(int code);
+  [DllImport("user32.dll")] static extern IntPtr SetTimer(IntPtr h, IntPtr id, uint ms, IntPtr f);
+  [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hgt, uint flags);
+  [DllImport("user32.dll")] static extern bool InvalidateRect(IntPtr h, IntPtr r, bool erase);
+  [DllImport("user32.dll")] static extern IntPtr BeginPaint(IntPtr h, out PAINTSTRUCT p);
+  [DllImport("user32.dll")] static extern bool EndPaint(IntPtr h, ref PAINTSTRUCT p);
+  [DllImport("user32.dll")] static extern int FillRect(IntPtr dc, ref RECT r, IntPtr brush);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int DrawText(IntPtr dc, string s, int n, ref RECT r, uint format);
+  [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint action, uint p, out RECT r, uint ini);
+  [DllImport("user32.dll")] static extern uint GetDpiForSystem();
+  [DllImport("user32.dll")] static extern IntPtr LoadCursor(IntPtr inst, IntPtr id);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string name);
+  [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint rgb);
+  [DllImport("gdi32.dll")] static extern uint SetTextColor(IntPtr dc, uint rgb);
+  [DllImport("gdi32.dll")] static extern int SetBkMode(IntPtr dc, int mode);
+  [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr dc, IntPtr o);
+  [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+  static extern IntPtr CreateFont(int h, int w, int esc, int orient, int weight, uint italic, uint underline, uint strike, uint charset, uint outPrec, uint clipPrec, uint quality, uint pitch, string face);
+
+  static WndProc proc; // referenced here so the collector never frees what the window calls
+  static string activityPath, stopPath, text = "";
+  static bool shown, stopped;
+  static int idleTicks, width, height, scale;
+  static IntPtr font, back, stopBrush, resumeBrush;
+
+  public static void Run(string mutexName, string activity, string stop) {
+    bool first;
+    using (new Mutex(true, mutexName, out first)) {
+      if (!first) return; // another Sidehand process shows it already
+      activityPath = activity; stopPath = stop; proc = Proc;
+      var c = new WNDCLASS { proc = proc, inst = GetModuleHandle(null), cursor = LoadCursor(IntPtr.Zero, new IntPtr(32512) /* IDC_ARROW */), name = "SidehandIndicator" };
+      RegisterClass(ref c);
+      scale = (int)GetDpiForSystem();
+      width = 380 * scale / 96; height = 36 * scale / 96;
+      font = CreateFont(-13 * scale / 96, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5 /* CLEARTYPE */, 0, "Segoe UI");
+      back = CreateSolidBrush(0x202020); stopBrush = CreateSolidBrush(0x2828C0); resumeBrush = CreateSolidBrush(0x308030);
+      RECT work; SystemParametersInfo(0x30 /* SPI_GETWORKAREA */, 0, out work, 0);
+      int margin = 12 * scale / 96;
+      var h = CreateWindowEx(0x08000000 | 0x8 | 0x80 /* NOACTIVATE | TOPMOST | TOOLWINDOW */, "SidehandIndicator", "", 0x80000000 /* WS_POPUP */,
+        work.R - width - margin, work.B - height - margin, width, height, IntPtr.Zero, IntPtr.Zero, c.inst, IntPtr.Zero);
+      // Ctrl+Alt+Pause; with Ctrl held, Pause arrives as VK_CANCEL (Break). A hotkey needs no focus.
+      RegisterHotKey(h, 1, 0x4003 /* CONTROL | ALT | NOREPEAT */, 0x13 /* VK_PAUSE */);
+      RegisterHotKey(h, 2, 0x4003, 0x03 /* VK_CANCEL */);
+      SetTimer(h, new IntPtr(1), 200, IntPtr.Zero);
+      Tick(h);
+      MSG m;
+      while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) DispatchMessage(ref m);
+    }
+  }
+
+  static RECT Button() { int p = 6 * scale / 96; return new RECT { L = width - 80 * scale / 96, T = p, R = width - p, B = height - p }; }
+
+  static IntPtr Proc(IntPtr h, uint msg, IntPtr w, IntPtr l) {
+    switch (msg) {
+      case 0x0021: return new IntPtr(3); // WM_MOUSEACTIVATE: MA_NOACTIVATE
+      case 0x0113: Tick(h); return IntPtr.Zero; // WM_TIMER
+      case 0x0312: SetStopped(true); Tick(h); return IntPtr.Zero; // WM_HOTKEY: stop only
+      case 0x0202: { // WM_LBUTTONUP
+        int x = (short)(l.ToInt64() & 0xFFFF), y = (short)((l.ToInt64() >> 16) & 0xFFFF);
+        var b = Button();
+        if (x >= b.L && x < b.R && y >= b.T && y < b.B) { SetStopped(!stopped); Tick(h); }
+        return IntPtr.Zero;
+      }
+      case 0x000F: Paint(h); return IntPtr.Zero;
+      case 0x0002: PostQuitMessage(0); return IntPtr.Zero; // WM_DESTROY
+    }
+    return DefWindowProc(h, msg, w, l);
+  }
+
+  static void SetStopped(bool on) {
+    try { if (on) File.WriteAllText(stopPath, DateTime.Now.ToString("s")); else File.Delete(stopPath); }
+    catch (IOException) { } catch (UnauthorizedAccessException) { }
+  }
+
+  static void Tick(IntPtr h) {
+    bool wasStopped = stopped; string was = text;
+    stopped = File.Exists(stopPath);
+    var until = File.GetLastWriteTimeUtc(activityPath); // 1601 when there is none
+    try { text = File.ReadAllText(activityPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    bool show = stopped || DateTime.UtcNow < until.AddSeconds(3);
+    if (show != shown) {
+      SetWindowPos(h, new IntPtr(-1) /* TOPMOST */, 0, 0, 0, 0, 0x10 | 0x2 | 0x1 | (show ? 0x40u : 0x80u) /* NOACTIVATE | NOMOVE | NOSIZE | SHOW or HIDE */);
+      shown = show;
+    }
+    if (stopped != wasStopped || text != was) InvalidateRect(h, IntPtr.Zero, true);
+    idleTicks = show ? 0 : idleTicks + 1;
+    if (idleTicks > 150) DestroyWindow(h); // 30 s without activity: the next action starts it again
+  }
+
+  static void Paint(IntPtr h) {
+    PAINTSTRUCT ps; var dc = BeginPaint(h, out ps);
+    var all = new RECT { R = width, B = height };
+    FillRect(dc, ref all, back);
+    SelectObject(dc, font); SetBkMode(dc, 1 /* TRANSPARENT */); SetTextColor(dc, 0xFFFFFF);
+    var b = Button();
+    var t = new RECT { L = 10 * scale / 96, R = b.L - 6 * scale / 96, B = height };
+    const uint Line = 0x20 | 0x4 | 0x800; // SINGLELINE | VCENTER | NOPREFIX
+    DrawText(dc, stopped ? "Sidehand stopped: agents must ask you first" : "Sidehand: " + text, -1, ref t, Line | 0x8000 /* END_ELLIPSIS */);
+    FillRect(dc, ref b, stopped ? resumeBrush : stopBrush);
+    DrawText(dc, stopped ? "Resume" : "Stop", -1, ref b, Line | 0x1 /* CENTER */);
+    EndPaint(h, ref ps);
+  }
+}

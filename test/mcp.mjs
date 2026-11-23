@@ -4,11 +4,13 @@
 // reply, and calls still queued when stdin closes are answered "not run" while the running one finishes.
 // Approvals (lib/approve.mjs): elicitation only when the client declared it; accept, decline and cancel;
 // Always allow / Always block kept in SIDEHAND_CONFIG_DIR; sensitive names; SIDEHAND_CONFIRM=strict and off.
+// And while the user has pressed Stop (the stand-in refuses acts as uia.ps1 does): the refused act's
+// message reaches the agent, acting calls queued behind it never run, a queued read still runs.
 // Run: node test/mcp.mjs (any OS; no real PowerShell. The stand-in part runs on Linux/WSL only,
 // since on Windows sidehand starts powershell.exe by its full path).
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -31,6 +33,7 @@ const init = replies.find((m) => m.id === 1).result;
 assert.equal(init.protocolVersion, "2025-06-18");
 assert.equal(init.serverInfo.name, "sidehand");
 assert.ok(init.capabilities.tools);
+assert.match(init.instructions, /pressed Stop.*ask the user/);
 
 const tools = Object.fromEntries(replies.find((m) => m.id === 2).result.tools.map((t) => [t.name, t]));
 assert.deepEqual(Object.keys(tools).sort(), ["capture", "clipboard", "crop", "launch", "list_monitors", "list_windows", "mask", "ui_act", "ui_ocr", "ui_tree", "ui_wait", "window"]);
@@ -86,6 +89,59 @@ if (process.platform !== "win32") {
 	assert.equal(ran.length, 1, `PowerShell ran ${ran.join(" | ")}`);
 	assert.match(ran[0], /-Op tree/);
 	console.log("ok: a cancelled queued call never runs; queued calls are refused on stdin close, the running one is answered");
+
+	// Stop: the stand-in refuses ui_act like uia.ps1 does while the stop file exists.
+	const stopLog = join(dir, "stop-calls.log");
+	const stopDir = join(dir, "stopped");
+	mkdirSync(stopDir);
+	writeFileSync(
+		join(stopDir, "powershell.exe"),
+		`#!${process.execPath}\nconst fs = require("fs");\nrequire("readline").createInterface({ input: process.stdin }).on("line", (l) => {\n` +
+			`  const r = JSON.parse(l); fs.appendFileSync(${JSON.stringify(stopLog)}, r.cmd + "\\n");\n` +
+			`  const stopped = /-Op (act|window|launch)/.test(r.cmd);\n` +
+			`  const reply = stopped ? { id: r.id, code: 1, out: "", err: "The user pressed Stop in Sidehand. Ask the user before doing anything else." } : { id: r.id, code: 0, out: "ok read", err: "" };\n` +
+			`  setTimeout(() => process.stdout.write(JSON.stringify(reply) + "\\n"), 300);\n});\n`,
+	);
+	chmodSync(join(stopDir, "powershell.exe"), 0o755);
+	// stdin stays open until every call is answered: closing it would refuse the queued calls for that reason instead.
+	const server = spawn(process.execPath, [fileURLToPath(new URL("../bin/sidehand.mjs", import.meta.url)), "mcp"], {
+		env: { ...process.env, PATH: `${stopDir}:${process.env.PATH}` },
+	});
+	const res = {};
+	let out = "";
+	const done = new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`no replies in 10 s: ${out}`)), 10000);
+		server.stdout.setEncoding("utf8");
+		server.stdout.on("data", (chunk) => {
+			out += chunk;
+			for (const line of out.split("\n").slice(0, -1)) {
+				const m = JSON.parse(line);
+				res[m.id] = m.result;
+			}
+			out = out.slice(out.lastIndexOf("\n") + 1);
+			if (Object.keys(res).length === 4) {
+				clearTimeout(timer);
+				resolve();
+			}
+		});
+	});
+	for (const m of [
+		call(1, "ui_act", { ref: "e5", action: "click" }),
+		call(2, "window", { title: "Notes", action: "close" }),
+		call(3, "ui_tree", { title: "Notes" }),
+		call(4, "clipboard", { text: "x" }),
+	])
+		server.stdin.write(`${JSON.stringify(m)}\n`);
+	await done;
+	server.stdin.end();
+	assert.ok(res[1].isError && /^ui act failed: The user pressed Stop in Sidehand\. Ask the user/.test(res[1].content[0].text), JSON.stringify(res[1]));
+	for (const id of [2, 4]) assert.ok(res[id].isError && /^not run: The user pressed Stop/.test(res[id].content[0].text), `call ${id}: ${JSON.stringify(res[id])}`);
+	assert.equal(res[3].content[0].text, "ok read");
+	const stopRan = readFileSync(stopLog, "utf8").trim().split("\n");
+	assert.equal(stopRan.length, 2, `PowerShell ran ${stopRan.join(" | ")}`);
+	assert.match(stopRan[0], /-Op act/);
+	assert.match(stopRan[1], /-Op tree/);
+	console.log("ok: after Stop the act is refused with the user's message, queued acting calls never run, a queued read does");
 }
 
 // Sensitive names: click, double-click and Enter on them ask first; other actions and look-alikes do not.
