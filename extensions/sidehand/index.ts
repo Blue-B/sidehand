@@ -8,6 +8,9 @@
  *   sidehand_window / sidehand_launch / sidehand_clipboard   windows, apps and the clipboard
  *   sidehand_capture / _crop / _mask / _resize / _info     screenshots and privacy masking
  *
+ * Acting tools (ui_act, window, launch, clipboard writes) ask the user first through pi's dialog when
+ * lib/approve.mjs says so: the first action on an app, and sensitive ones (Delete, Send, Pay, window close).
+ *
  * Zero external dependencies: powershell.exe and .NET, which ship with Windows.
  */
 import { execFileSync } from "node:child_process";
@@ -16,6 +19,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { approve } from "../../lib/approve.mjs";
 import * as cmd from "../../lib/commands.mjs";
 import { findInputTakeover, takeoverReason } from "../../lib/guard.mjs";
 import { useWorker } from "../../lib/powershell.mjs";
@@ -70,6 +74,12 @@ function reply(r: Result, withImage = false) {
 	if (withImage && r.path) content.push(image(r.path));
 	return { content, details: r.details };
 }
+
+// The user's answer to lib/approve.mjs's questions through pi's dialog; without a UI (print or json mode) it cannot ask.
+function asker(ctx: { hasUI: boolean; ui: { select(title: string, options: string[], opts?: { signal?: AbortSignal }): Promise<string | undefined> } }, signal?: AbortSignal) {
+	return ctx.hasUI ? async (question: string, choices: string[]) => (await ctx.ui.select(question, choices, { signal })) ?? null : null;
+}
+const mayAsk = " The user may be asked first (the first action on an app";
 
 const title = Type.String({ description: "part of the window title (case-insensitive; an exact title wins) or a handle from sidehand_list_windows (0x...)" });
 const returnImage = Type.Optional(Type.Boolean({ default: true, description: "embed the image in the result" }));
@@ -169,7 +179,9 @@ export default function sidehand(pi: ExtensionAPI): void {
 			"press works in the background on classic controls and on a visible text field of a browser or Electron window. " +
 			"focus, and press on other WPF/browser controls (except Enter on a button or link), take the user's foreground: only with allow_foreground=true after the user agreed; press hands the foreground back once the keys are in, focus keeps it. " +
 			"If an action fails, never fall back to moving the real mouse or bringing the window forward yourself; tell the user. " +
-			"Refs expire when the tree is read again.",
+			"Refs expire when the tree is read again." +
+			mayAsk +
+			"; click or Enter on Delete, Send, Pay and the like); if they did not allow it, do not retry: ask the user.",
 		parameters: Type.Object({
 			ref: Type.String({ description: "e.g. e12, t3 from sidehand_ui_ocr, or @x,y = pixel x,y of the image the last sidehand_capture mode=window returned (t and @ refs: click, double-click, right-click, hover, wheel, drag)" }),
 			action: Type.Union(cmd.ACTIONS.map((a: string) => Type.Literal(a))),
@@ -177,8 +189,11 @@ export default function sidehand(pi: ExtensionAPI): void {
 			allow_foreground: Type.Optional(Type.Boolean({ description: "permit taking the user's foreground window" })),
 		}),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) =>
-			reply(await cmd.act({ ref: p.ref, action: p.action, value: p.value, allowForeground: p.allow_foreground }, signal)),
+		execute: async (_id, p, signal, _onUpdate, ctx) => {
+			const o = { ref: p.ref, action: p.action, value: p.value, allowForeground: p.allow_foreground };
+			await approve("ui_act", o, asker(ctx, signal), signal);
+			return reply(await cmd.act(o, signal));
+		},
 	});
 
 	pi.registerTool({
@@ -186,36 +201,49 @@ export default function sidehand(pi: ExtensionAPI): void {
 		label: "Manage a window",
 		description:
 			"Move ('x,y'), resize ('w,h'), minimize, restore or close a window without activating it. " +
-			"restore brings a minimized window back behind the user's windows so it can be read and operated.",
+			"restore brings a minimized window back behind the user's windows so it can be read and operated." +
+			mayAsk +
+			"; close).",
 		parameters: Type.Object({
 			title,
 			action: Type.Union(cmd.WINDOW_ACTIONS.map((a: string) => Type.Literal(a))),
 			value: Type.Optional(Type.String()),
 		}),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) => reply(await cmd.window({ title: p.title, action: p.action, value: p.value }, signal)),
+		execute: async (_id, p, signal, _onUpdate, ctx) => {
+			const o = { title: p.title, action: p.action, value: p.value };
+			await approve("window", o, asker(ctx, signal), signal);
+			return reply(await cmd.window(o, signal));
+		},
 	});
 
 	pi.registerTool({
 		name: "sidehand_launch",
 		label: "Launch an app",
-		description: "Start an app, document or URL without it taking the user's focus. Prints the new window's title.",
+		description: "Start an app, document or URL without it taking the user's focus. Prints the new window's title." + mayAsk + ").",
 		parameters: Type.Object({
 			app: Type.String({ description: "path, App Paths name (notepad, excel), document or URL" }),
 			args: Type.Optional(Type.String()),
 		}),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) => reply(await cmd.launch({ app: p.app, args: p.args }, signal)),
+		execute: async (_id, p, signal, _onUpdate, ctx) => {
+			const o = { app: p.app, args: p.args };
+			await approve("launch", o, asker(ctx, signal), signal);
+			return reply(await cmd.launch(o, signal));
+		},
 	});
 
 	pi.registerTool({
 		name: "sidehand_clipboard",
 		label: "Clipboard",
 		description:
-			"Read the clipboard text, or replace it with text. Replacing overwrites what the user copied, so prefer sidehand_ui_act type to enter text.",
+			"Read the clipboard text, or replace it with text. Replacing overwrites what the user copied (and may ask the user first), so prefer sidehand_ui_act type to enter text.",
 		parameters: Type.Object({ text: Type.Optional(Type.String({ description: "omit to read" })) }),
 		executionMode: "sequential",
-		execute: async (_id, p, signal) => reply(await cmd.clipboard({ text: p.text }, signal)),
+		execute: async (_id, p, signal, _onUpdate, ctx) => {
+			await approve("clipboard", { text: p.text }, asker(ctx, signal), signal);
+			return reply(await cmd.clipboard({ text: p.text }, signal));
+		},
 	});
 
 	pi.registerTool({

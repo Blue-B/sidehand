@@ -278,6 +278,14 @@ public static class SidehandUia {
     return new POINT { X = r.L + (int)((x + 0.5) * scale), Y = r.T + (int)((y + 0.5) * scale) };
   }
 
+  // A ref's control as "<type>\t<name>", for the approval prompts (uia.ps1 -Op target); acts on nothing.
+  public static string Describe(string cachePath, string refId) {
+    IntPtr hwnd; string text;
+    if (refId.StartsWith("t")) { ResolveText(cachePath, refId, out hwnd, out text); return "text\t" + text; }
+    var el = Resolve(cachePath, refId, out hwnd);
+    return el.CurrentLocalizedControlType + "\t" + el.CurrentName;
+  }
+
   static string Click(IUIAutomationElement el) {
     var inv = Pattern<IUIAutomationInvokePattern>(el, PInvoke); if (inv != null) { inv.Invoke(); return "invoke"; }
     var tog = Pattern<IUIAutomationTogglePattern>(el, PToggle); if (tog != null) { tog.Toggle(); return "toggle"; }
@@ -846,6 +854,14 @@ public static class SidehandUia {
   [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO i);
   [DllImport("kernel32.dll")] static extern uint GetProcessId(IntPtr h);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)] static extern int AssocQueryString(int flags, int str, string assoc, string extra, StringBuilder outStr, ref int outLen);
+
+  // The program that opens a URL scheme ("https") or file type (".docx"), or "" when none is registered.
+  public static string AssocExe(string assoc) {
+    var sb = new StringBuilder(1024); int n = sb.Capacity;
+    // ASSOCF_INIT_IGNOREUNKNOWN: an unknown type gives an error, not the "Open with" program; 2 = ASSOCSTR_EXECUTABLE
+    return AssocQueryString(0x400, 2, assoc, null, sb, ref n) == 0 ? sb.ToString() : "";
+  }
 
   // Starts an app (path, App Paths name, document or URL) shown without activation, and keeps
   // foreground changes locked while it starts. Returns the process id, or 0 when an existing

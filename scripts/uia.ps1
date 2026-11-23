@@ -9,6 +9,8 @@
     -Op window -Title "<substring>" -Action move|resize|minimize|restore|close [-Value "x,y" | "w,h"]
     -Op launch -Value <path, app name, document or URL> [-Arguments "..."]
     -Op clipboard [-Value text]    read the clipboard, or replace it with -Value
+    -Op target -Ref eN | -Title "<substring>" | -Value <what launch would start>
+                                   JSON: the app (exe name) an action would touch, its window and the ref's control; acts on nothing
     -Op watch                      internal: launch's background foreground watch (state in SIDEHAND_LAUNCH_WATCH)
   -Title is a handle from list.ps1 (0x...), an exact title, or else part of one (case-insensitive).
   Refs from the last tree/wait/ocr call are cached in %TEMP%\sidehand-uia[-<SIDEHAND_SESSION>].txt as UIA RuntimeIds.
@@ -16,7 +18,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('tree','wait','ocr','act','window','launch','clipboard','watch')]
+  [ValidateSet('tree','wait','ocr','act','window','launch','clipboard','watch','target')]
   [string]$Op = 'tree',
   [string]$Title = "",
   [int]$MaxNodes = 300,
@@ -165,6 +167,34 @@ switch ($Op) {
       if ($null -eq $shown -and (& $findNew)) { $shown = $i }
       Start-Sleep -Milliseconds 250
     }
+  }
+  'target' {
+    # For the approval prompts of the MCP server and the pi extension (lib/approve.mjs).
+    $t = @{}
+    if ($Ref) {
+      # A point (@x,y) names no control; its window is the one of the last capture.
+      if ($Ref -like '@*') {
+        if (-not (Test-Path $SidehandPointsPath)) { throw "no window capture to take point refs from; capture the window (mode window) first" }
+        $t.type = 'point'; $t.control = $Ref; $h = [IntPtr][long](Get-Content $SidehandPointsPath -TotalCount 1)
+      } else {
+        $t.type, $t.control = [SidehandUia]::Describe($cachePath, $Ref) -split "`t", 2
+        $h = [IntPtr][long](Get-Content $cachePath -TotalCount 1)
+      }
+      $sb = New-Object System.Text.StringBuilder 512; [void][SidehandNative]::GetWindowText($h, $sb, $sb.Capacity); $t.window = "$sb"
+      $procId = [uint32]0; [void][SidehandNative]::GetWindowThreadProcessId($h, [ref]$procId)
+    } elseif ($Title) {
+      $w = Find-Window; $t.window = $w.Title; $procId = $w.ProcessId
+    } else {
+      Assert-Unrestricted 'launching apps'
+      if (-not $Value) { throw "target requires -Ref, -Title or -Value" }
+      # A URL or a document starts the program registered for it; anything else is the program (notepad, C:\x\app.exe).
+      # shortcut: an App Paths alias whose process has another name (calc -> CalculatorApp.exe) is asked for again on its first act.
+      $assoc = if ($Value -match '^([a-z][a-z0-9+.-]+):') { $Matches[1] } else { try { [IO.Path]::GetExtension($Value) } catch { '' } }
+      $exe = if ($assoc -and $assoc -ne '.exe') { [SidehandUia]::AssocExe($assoc) } else { $Value }
+      $t.app = if ($exe) { [IO.Path]::GetFileNameWithoutExtension($exe).ToLower() + '.exe' } elseif ($assoc -like '.*') { $assoc } else { "${assoc}:" }
+    }
+    if ($procId) { $t.app = (Get-Process -Id $procId).ProcessName.ToLower() + '.exe' }
+    ConvertTo-Json -Compress $t
   }
   'act' {
     if (-not $Ref) { throw "act requires -Ref" }
