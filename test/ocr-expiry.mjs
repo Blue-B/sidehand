@@ -8,7 +8,7 @@ import { psQuote, script } from "../lib/powershell.mjs";
 
 const session = `expiry-test-${process.pid}`;
 const command =
-	`$env:SIDEHAND_SESSION = ${psQuote(session)}; $env:SIDEHAND_INDICATOR = '0'; $c = Join-Path $env:TEMP 'sidehand-uia-${session}.txt'; ` +
+	`$env:SIDEHAND_SESSION = ${psQuote(session)}; $env:SIDEHAND_INDICATOR = '0'; $env:SIDEHAND_LOG = '0'; $c = Join-Path $env:TEMP 'sidehand-uia-${session}.txt'; ` +
 	`[IO.File]::WriteAllLines($c, [string[]]@('0', "t1\`t10,10\`tSave")); (Get-Item $c).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-2); ` +
 	`try { & ${psQuote(script("uia.ps1"))} -Op act -Ref t1 -Action click } catch { [Console]::WriteLine('ERR ' + $_) } finally { Remove-Item $c }`;
 const r = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], { encoding: "utf8" });

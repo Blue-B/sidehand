@@ -21,7 +21,18 @@ function Start-App([string]$exe, [string]$role, [string]$log) {
 
 # Native tools report refusals on stderr; collect them as output instead of stopping the run.
 function Native([string]$exe, [string[]]$argv) { $ErrorActionPreference = 'Continue'; (& $exe @argv 2>&1 | ForEach-Object { "$_" }) -join "`n" }
-function Sidehand([string[]]$argv) { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $uia) + $argv) }
+# Sidehand's action log goes to the work folder, not the user's: its own LOCALAPPDATA, with the compiled engine copied in.
+$logHome = Join-Path $Work 'appdata'
+New-Item -ItemType Directory -Force (Join-Path $logHome 'sidehand') | Out-Null
+Copy-Item (Join-Path $env:LOCALAPPDATA 'sidehand\*.dll') (Join-Path $logHome 'sidehand') -ErrorAction SilentlyContinue
+# $command: several uia.ps1 calls in one process (undo remembers only within one process).
+function Sidehand([string[]]$argv, [string]$command = '') {
+  $real = $env:LOCALAPPDATA; $env:LOCALAPPDATA = $logHome
+  try {
+    if ($command) { Native 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command) }
+    else { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $uia) + $argv) }
+  } finally { $env:LOCALAPPDATA = $real }
+}
 function Script([string]$name, [string[]]$argv) { Native 'powershell.exe' (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo "scripts\$name")) + $argv) }
 
 # The middle of a red or blue square in a PNG, as "@x,y". Both corners 4 px away must match too: a
@@ -92,6 +103,12 @@ $cases = @(
   @('sidehand', 'WPF', 'check', 'CheckBox "Enable"', 'check', '', 'check True'),
   @('sidehand', 'WPF', 'select list item', 'List "Items"', 'select', 'Two', 'list Two'),
   @('sidehand', 'WPF', 'expand tree item', 'TreeItem "Root"', 'expand', '', 'tree.expand'),
+  # The action, then undo in the same process: the event is the earlier value or state coming back.
+  @('sidehand', 'WinForms', 'undo type', 'Edit "Name"', 'type', 'hello', 'text len=0'),
+  @('sidehand', 'WinForms', 'undo check', 'CheckBox "Enable"', 'check', '', 'check False'),
+  @('sidehand', 'WinForms', 'undo select', 'List "Items"', 'select', 'Three', 'list One'),
+  @('sidehand', 'WPF', 'undo type', 'Edit "Name"', 'type', 'hello', 'text len=0'),
+  @('sidehand', 'WPF', 'undo check', 'CheckBox "Enable"', 'check', '', 'check False'),
   # Posted input, window management and launching.
   @('sidehand', 'WinForms', 'press Enter', 'Edit "Name"', 'press', 'Enter', 'key Return'),
   @('sidehand', 'WinForms', 'press ctrl+a', 'Edit "Name"', 'press', 'ctrl+a', 'key A ctrl'),
@@ -249,7 +266,8 @@ foreach ($c in $cases) {
     }
     if ($allow) { $env:SIDEHAND_ALLOW = $allow }
     $t0 = Tick; $sw = [Diagnostics.Stopwatch]::StartNew()
-    $out = if ($tool -eq 'sidehand') { Sidehand $argv }
+    $out = if ($label -like 'undo *') { Sidehand @() "& '$uia' -Op act -Ref $ref -Action $action $(if ($value) { "-Value '$value'" }); & '$uia' -Op undo" }
+           elseif ($tool -eq 'sidehand') { Sidehand $argv }
            elseif ($tool -eq 'cua-driver') { CuaCall $action $cuaArgs }
            elseif ($value) { Native $AgentDesktop @($action, $ref, $value) }
            else { Native $AgentDesktop @($action, $ref) }
@@ -328,4 +346,12 @@ try {
   foreach ($p in $target, $decoy) { try { $p.Kill() } catch {} }
 }
 $results | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 (Join-Path $Work 'results.json')
+# Every action of the run has its line in the action log, with window, process and control, and never the typed text.
+$logFile = Join-Path $logHome 'sidehand\actions.log'
+$logged = @(Get-Content -Encoding UTF8 $logFile -ErrorAction SilentlyContinue | ForEach-Object { $_ | ConvertFrom-Json })
+$typed = @($logged | Where-Object { $_.action -eq 'type' -and $_.ok -and $_.control -eq 'Edit "Name"' -and $_.chars -eq 5 -and $_.window -like 'Sidehand Test*' -and $_.process -like 'Test*' })
+$undone = @($logged | Where-Object { $_.action -eq 'undo' -and $_.ok })
+if ($typed.Count -lt 4 -or $undone.Count -ne 5 -or (Get-Content -Raw -Encoding UTF8 $logFile) -match 'hello') {
+  throw "action log: $($typed.Count) type and $($undone.Count) undo lines as expected (want 4 and 5), or it holds the typed text:`n$(Get-Content -Raw -Encoding UTF8 $logFile)"
+}
 Remove-Item (Join-Path $env:TEMP "sidehand-uia-$env:SIDEHAND_SESSION.txt"), (Join-Path $env:TEMP "sidehand-points-$env:SIDEHAND_SESSION.txt") -ErrorAction SilentlyContinue

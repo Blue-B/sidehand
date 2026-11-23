@@ -56,6 +56,7 @@ class TestWinForms : Form {
     combo.Items.AddRange(new object[] { "Alpha", "Beta", "Gamma" });
     var list = new ListBox { Name = "ItemList", AccessibleName = "Items", Location = new Point(10, 100), Size = new Size(150, 60) };
     list.Items.AddRange(new object[] { "One", "Two", "Three" });
+    list.SelectedIndex = 0; // something for `undo select` to go back to
     var tree = new TreeView { Name = "FolderTree", AccessibleName = "Folders", Location = new Point(180, 100), Size = new Size(200, 90) };
     var root = tree.Nodes.Add("Root"); root.Nodes.Add("Child A"); root.Nodes.Add("Child B");
     var panel = new Panel { Name = "ScrollPanel", AccessibleName = "Long panel", Location = new Point(10, 200), Size = new Size(380, 100), AutoScroll = true, BorderStyle = BorderStyle.FixedSingle };

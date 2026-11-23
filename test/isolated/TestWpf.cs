@@ -43,6 +43,7 @@ class TestWpf {
     apply.Click += (s, e) => { status.Text = "applied:" + name.Text; Log("apply.click"); };
     name.TextChanged += (s, e) => Log("text len=" + name.Text.Length);
     chk.Checked += (s, e) => Log("check True");
+    chk.Unchecked += (s, e) => Log("check False");
     combo.SelectionChanged += (s, e) => Log("combo " + combo.SelectedItem);
     list.SelectionChanged += (s, e) => Log("list " + list.SelectedItem);
     root.Expanded += (s, e) => Log("tree.expand");

@@ -116,3 +116,7 @@ Always block applies in every mode. `SIDEHAND_ALLOW` works as before, and the qu
 ## Activity indicator and Stop
 
 While an agent acts, a strip in the corner of your screen shows what it does, with a Stop button (or Ctrl+Alt+Pause while it is open) that refuses every action of every agent until you press Resume (see [usage.md](usage.md#seeing-and-stopping-what-it-does)). It never takes your focus. To turn it off, set `SIDEHAND_INDICATOR=0` the same way as `SIDEHAND_ALLOW` above, for example `"env": { "SIDEHAND_INDICATOR": "0" }`. Stop still holds when another agent's strip was used.
+
+## Action log
+
+Sidehand writes one line for each action it takes to `%LOCALAPPDATA%\sidehand\actions.log`: the window, the process, the control and whether it worked. It never writes typed text, clipboard text or field values. `sidehand log` prints the latest lines; [usage.md](usage.md#action-log) has the format. To turn it off, set `SIDEHAND_LOG=0` the same way as `SIDEHAND_ALLOW` above (`"env": { "SIDEHAND_LOG": "0" }`). From WSL it reaches Windows on its own.

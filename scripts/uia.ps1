@@ -9,6 +9,7 @@
     -Op window -Title "<substring>" -Action move|resize|minimize|restore|close [-Value "x,y" | "w,h"]
     -Op launch -Value <path, app name, document or URL> [-Arguments "..."]
     -Op clipboard [-Value text]    read the clipboard, or replace it with -Value
+    -Op undo                       put back the latest type/check/uncheck/select of this process (the MCP or pi worker)
     -Op target -Ref eN | -Title "<substring>" | -Value <what launch would start>
                                    JSON: the app (exe name) an action would touch, its window and the ref's control; acts on nothing
     -Op watch                      internal: launch's background foreground watch (state in SIDEHAND_LAUNCH_WATCH)
@@ -16,12 +17,12 @@
   -Title is a handle from list.ps1 (0x...), an exact title, or else part of one (case-insensitive).
   Refs from the last tree/wait/ocr call are cached in %TEMP%\sidehand-uia[-<SIDEHAND_SESSION>].txt as UIA RuntimeIds.
   The engine (SidehandUia.cs, Import-UiaEngine in lib.ps1) is compiled once into %LOCALAPPDATA%\sidehand and reused.
-  While the user has pressed Stop (%LOCALAPPDATA%\sidehand\stop-<desktop> exists) act, window, launch and a
+  While the user has pressed Stop (%LOCALAPPDATA%\sidehand\stop-<desktop> exists) act, undo, window, launch and a
   clipboard write are refused; reads still work.
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('tree','wait','ocr','act','window','launch','clipboard','watch','target','indicator')]
+  [ValidateSet('tree','wait','ocr','act','undo','window','launch','clipboard','watch','target','indicator')]
   [string]$Op = 'tree',
   [string]$Title = "",
   [int]$MaxNodes = 300,
@@ -45,6 +46,18 @@ $ErrorActionPreference = 'Stop'
 # One file per session (SIDEHAND_SESSION, set by the MCP server and the pi extension), so agents
 # running side by side never read each other's refs.
 $cachePath = Join-Path $env:TEMP $(if ($env:SIDEHAND_SESSION) { "sidehand-uia-$($env:SIDEHAND_SESSION).txt" } else { 'sidehand-uia.txt' })
+
+# Every acting operation leaves a line in the action log (Write-ActionLog in lib.ps1), failed ones too.
+$acting = $Op -in 'act', 'undo', 'window', 'launch' -or ($Op -eq 'clipboard' -and $Set)
+$logHwnd = [IntPtr]::Zero; $logPid = 0
+function Write-OpLog([string]$err) {
+  if (-not $acting) { return }
+  $name = switch ($Op) { 'act' { $Action } 'window' { "window $Action" } 'clipboard' { 'clipboard set' } default { $Op } }
+  $target = ''
+  if ($Op -in 'act', 'undo' -and ('SidehandUia' -as [type])) { $script:logHwnd = [SidehandUia]::LastWindow; $target = [SidehandUia]::LastTarget }
+  Write-ActionLog $name $logHwnd $target $(if ($Op -in 'act', 'clipboard') { $Value }) $err $logPid
+}
+trap { if ($acting) { Write-OpLog $_.Exception.Message }; break }
 
 function Find-Window {
   if (-not $Title) { throw "$Op requires -Title" }
@@ -81,8 +94,7 @@ function Show-Activity([string]$what) {
 }
 function End-Activity { if ($activity) { try { [IO.File]::SetLastWriteTimeUtc($activityPath, [DateTime]::UtcNow) } catch {} } }
 # target (the approval lookup before an act) too, so a stopped agent never puts a question to the user.
-$acting = $Op -in 'act', 'window', 'launch', 'target' -or ($Op -eq 'clipboard' -and $Set)
-if ($acting -and (Test-Path -LiteralPath $stopPath)) {
+if (($acting -or $Op -eq 'target') -and (Test-Path -LiteralPath $stopPath)) {
   Start-Indicator # it may have been closed; the user needs its Resume
   throw 'The user pressed Stop in Sidehand. Ask the user before doing anything else.'
 }
@@ -93,6 +105,7 @@ if ($Op -eq 'clipboard') {
   if ($Set) {
     Show-Activity 'set the clipboard'
     try { Set-Clipboard -Value $Value } finally { End-Activity }
+    Write-OpLog
     "ok clipboard set ($($Value.Length) chars); this replaced the user's clipboard"
   }
   else { $c = Get-Clipboard -Raw; if ($null -eq $c) { '(clipboard holds no text)' } else { $c } }
@@ -100,7 +113,8 @@ if ($Op -eq 'clipboard') {
 }
 Import-UiaEngine
 # Surface the engine's own message instead of PowerShell's "Exception calling ..." wrapper.
-trap [System.Management.Automation.MethodInvocationException] { throw $_.Exception.InnerException.Message }
+trap [System.Management.Automation.MethodInvocationException] { $m = $_.Exception.InnerException.Message; Write-OpLog $m; throw $m }
+[SidehandUia]::LastWindow = [IntPtr]::Zero; [SidehandUia]::LastTarget = $null
 # launch/watch: the window in front is the launched app's if it belongs to the new process or to an
 # already running instance of the same exe (that one brings itself forward despite the lock). Any other
 # window (Start, a credential prompt, an app the user opened) means the user switched: leave it alone.
@@ -171,6 +185,7 @@ try {
     }
     'window' {
       $w = Find-Window
+      $logHwnd = $w.Handle
       Show-Activity "$Action $($w.Title)"
       [SidehandUia]::Window($w.Handle.ToInt64(), $w.Title, $Action, $Value)
     }
@@ -180,7 +195,7 @@ try {
       Show-Activity "launch $Value"
       $before = @(Get-WindowList | ForEach-Object { $_.Handle })
       $fg = New-Object 'SidehandUia+Foreground'
-      $appPid = [SidehandUia]::Launch($Value, $Arguments)
+      $appPid = $logPid = [SidehandUia]::Launch($Value, $Arguments)
       $new = $null
       $gaveBack = [SidehandUia]::LaunchGaveBack -gt 0
       $appPath = try { (Get-Command $Value -ErrorAction Stop).Source } catch { $Value }
@@ -196,7 +211,7 @@ try {
         if (-not $new) { Start-Sleep -Milliseconds 500 }
       }
       if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
-      $name = if ($new) { $new.Title } else { $Value }
+      $name = if ($new) { $logHwnd = $new.Handle; $new.Title } else { $Value }
       $msg = if ($new) { "ok launched: $name" } else { "ok started $Value (pid $appPid); no new window yet" }
       if ([SidehandNative]::GetForegroundWindow() -ne $fg.Before -and (& $isOurs)) { $msg += "`nWARNING: the app took the foreground while starting" }
       elseif ($gaveBack) { $msg += "`nnote: $name came forward; the user's window was put back in front" }
@@ -255,6 +270,8 @@ try {
       Show-Activity "$Action in $target"
       [SidehandUia]::Act($cachePath, $SidehandPointsPath, $Ref, $Action, $Value, [bool]$AllowForeground)
     }
+    'undo' { Show-Activity 'undo'; [SidehandUia]::Undo() }
     'indicator' { [SidehandIndicator]::Run($indicatorMutex, $activityPath, $stopPath) }
   }
 } finally { End-Activity }
+Write-OpLog

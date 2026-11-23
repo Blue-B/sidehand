@@ -26,6 +26,9 @@ Act (refs come from the last tree/wait/ocr, or @x,y from the last capture window
       OCR refs (t3) take click, double-click, right-click, hover, wheel and drag (to a t-ref or dx,dy), at the text's center
       point refs (@x,y) are pixel x,y of the last \`capture window\` image and take the same actions (drag to @x,y too); 60 s
       focus: takes your foreground window, so it needs --allow-foreground
+  sidehand undo                                   put back the latest type/check/uncheck/select; works only inside an
+                                                  MCP or pi session (each CLI call is a new process with no history)
+  sidehand log [n]                                the last n (20) acting operations from the action log
 Windows and apps
   sidehand window <title> <move x,y | resize w,h | minimize | restore | close>
                                                   restore brings a minimized window back behind yours
@@ -53,6 +56,7 @@ Environment
                                                   agents using the CLI at once overwrite each other's refs
   SIDEHAND_INDICATOR=0                            no activity indicator; a Stop pressed in another session's
                                                   indicator still refuses every action until Resume
+  SIDEHAND_LOG=0                                  no action log (%LOCALAPPDATA%\\sidehand\\actions.log)
 
 While Sidehand acts, an indicator in the corner of your screen shows what it does. Its Stop button (or
 Ctrl+Alt+Pause while it is open) refuses every action of every agent until you press Resume; reading still works.
@@ -104,6 +108,14 @@ const ops = {
 	ocr: () => (need(1, "ocr <title>"), cmd.ocr({ title: p[1] })),
 	wait: () => (need(2, "wait <title> <text>"), cmd.wait({ title: p[1], text: p[2], gone: f.gone, timeoutMs: num(f.timeout) })),
 	act: () => (need(2, "act <ref> <action> [value]"), cmd.act({ ref: p[1], action: p[2], value: p.slice(3).join(" ") || undefined, allowForeground: f["allow-foreground"] })),
+	undo: () => {
+		throw new Error("undo works only inside an MCP or pi session: each CLI call is a new process and keeps no history of earlier values");
+	},
+	log: () => {
+		const n = p[1] == null ? 20 : Number(p[1]);
+		if (!Number.isInteger(n) || n < 1) throw new Error("usage: sidehand log [n]");
+		return cmd.actionLog(n);
+	},
 	window: () => (need(2, "window <title> <action> [value]"), cmd.window({ title: p[1], action: p[2], value: p.slice(3).join(" ") || undefined })),
 	launch: () => (need(1, "launch <app> [args]"), cmd.launch({ app: p[1], args: p.slice(2).join(" ") })),
 	clipboard: () => cmd.clipboard({ text: p.length > 1 ? p.slice(1).join(" ") : undefined }),
