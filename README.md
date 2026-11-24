@@ -15,6 +15,8 @@
 
 <p align="center"><b>English</b> | <a href="README.ko.md">한국어</a> | <a href="README.zh-CN.md">简体中文</a></p>
 
+https://github.com/user-attachments/assets/17bd0eda-6920-493e-8093-5545ffc38259
+
 ![Three AI agents fill in three apps hidden behind your note at the same time, while you keep typing in it](assets/demo.gif)
 
 Sidehand lets Claude, Codex, Cursor or any MCP client read and operate Windows apps behind the window you are using. It types, clicks, picks from lists and reads the screen as text without moving your mouse or taking your keyboard.

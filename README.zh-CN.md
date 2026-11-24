@@ -15,6 +15,8 @@
 
 <p align="center"><a href="README.md">English</a> | <a href="README.ko.md">한국어</a> | <b>简体中文</b></p>
 
+https://github.com/user-attachments/assets/17bd0eda-6920-493e-8093-5545ffc38259
+
 ![你在便笺里继续打字的同时，三个 AI 智能体同时填写藏在便笺后面的三个应用](assets/demo.gif)
 
 Sidehand 让 Claude、Codex、Cursor 或任何 MCP 客户端读取并操作你当前窗口后面的 Windows 应用。它可以输入文字、点击、从列表中选择，并把界面读成文本，全程不移动你的鼠标，也不抢你的键盘。

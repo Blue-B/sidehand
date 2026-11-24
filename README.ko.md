@@ -15,6 +15,8 @@
 
 <p align="center"><a href="README.md">English</a> | <b>한국어</b> | <a href="README.zh-CN.md">简体中文</a></p>
 
+https://github.com/user-attachments/assets/2461cea4-36b7-4738-b0b4-6ca1d840b0a7
+
 ![내가 메모에 계속 글을 쓰는 동안, 메모 뒤에 가려진 앱 3개를 AI 에이전트 3개가 동시에 채우는 모습](assets/demo.ko.gif)
 
 Sidehand는 Claude, Codex, Cursor 같은 MCP 클라이언트가 지금 쓰고 있는 창 뒤의 Windows 앱을 읽고 조작하게 해 줍니다. 입력, 클릭, 목록 선택, 화면 읽기를 하면서도 내 마우스를 움직이거나 키보드를 가져가지 않습니다.
