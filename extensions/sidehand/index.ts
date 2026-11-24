@@ -94,6 +94,7 @@ export default function sidehand(pi: ExtensionAPI): void {
 	// script; the user decides, and without a UI to ask it is blocked.
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("bash", event)) return;
+		if (process.env.SIDEHAND_CONFIRM === "off") return; // the user turned every sidehand question off
 		const hit = findInputTakeover(event.input.command, ctx.cwd);
 		if (!hit) return;
 		const question = `This command moves the real mouse or brings a window forward (${hit}), which interrupts the user. Allow it?`;
