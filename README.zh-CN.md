@@ -15,7 +15,7 @@
 
 <p align="center"><a href="README.md">English</a> | <a href="README.ko.md">한국어</a> | <b>简体中文</b></p>
 
-https://github.com/user-attachments/assets/17bd0eda-6920-493e-8093-5545ffc38259
+https://github.com/user-attachments/assets/478a9769-6333-49dd-843c-7be7e5b0d2a5
 
 ![你在便笺里继续打字的同时，三个 AI 智能体同时填写藏在便笺后面的三个应用](assets/demo.gif)
 
