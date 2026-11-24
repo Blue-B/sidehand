@@ -1,6 +1,6 @@
 {
   "name": "sidehand",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "mcpName": "io.github.Blue-B/sidehand",
   "description": "Let your AI agent use Windows apps while you keep working: reads and operates desktop controls without stealing your focus, from Windows or WSL. Zero dependencies.",
   "keywords": [

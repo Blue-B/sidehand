@@ -86,12 +86,22 @@ $ sidehand act e12 click
 | `tree <title>` | the window's controls as text, each with a ref (`e4`) |
 | `act <ref> <action> [value]` | `type`, `click`, `select`, `check`, `press`, `wheel`, `drag` and more |
 | `ocr <title>` | text of custom-drawn windows (games, Qt, canvas) via Windows OCR, with refs (`t1`) that `act` can click |
+| `act @x,y <action>` | click, drag or scroll any pixel of the last `capture window` image: icons, canvases, 3D views |
 | `wait <title> <text>` | wait until a control with that text appears (or `--gone`) |
-| `window`, `launch` | move, resize, restore or close a window; start an app without taking your focus |
+| `window`, `launch` | move, resize, restore or close a window; start an app without taking your focus (`--isolated`, experimental: on a hidden desktop of its own) |
+| `log` | the latest actions from the local action log |
 | `capture`, `mask` | screenshot a covered window; black out, pixelate or blur regions |
 | `doctor` | check your setup |
 
-MCP and pi expose the same operations as tools (`ui_tree`, `ui_ocr`, `ui_act`, ...). Every command and option: [docs/usage.md](docs/usage.md).
+MCP and pi expose the same operations as tools (`ui_tree`, `ui_ocr`, `ui_act`, ...), plus `ui_undo`, which puts back the latest text, checkbox or selection the agent changed. Every command and option: [docs/usage.md](docs/usage.md).
+
+### You stay in control
+
+- Before the agent first touches an app, you choose Don't allow, Allow once, Always allow or Always block. Delete, Send, Pay and similar buttons, and closing a window, ask again (MCP clients with elicitation, and pi).
+- While it acts, a small strip in the corner of your screen says what it is doing. Its Stop button (or Ctrl+Alt+Pause) stops every agent until you press Resume. The strip never takes your focus.
+- Every action goes to `%LOCALAPPDATA%\sidehand\actions.log`, without the text it typed.
+
+Details and settings: [docs/setup.md](docs/setup.md#approvals).
 
 ### Hide private info in screenshots
 
@@ -131,6 +141,7 @@ More: [docs/troubleshooting.md](docs/troubleshooting.md).
 ## Security
 
 Text Sidehand reads from other windows goes to your agent, so treat it like web content: a page or message can try to instruct the agent.
+Lines that look like such instructions are marked with ⚠. This catches common phrasings, not every attack.
 `SIDEHAND_ALLOW` limits which windows it sees, and every string it passes to PowerShell is quoted or refused.
 
 ## License

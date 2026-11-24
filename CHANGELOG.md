@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-11-24)
 
 What Google's Gemini computer use for Mac does (click anything on screen, ask before acting, show what it does with a Stop button, keep backups, work in a screen of its own), for Windows and any MCP agent. On a real Windows 11 desktop at 125% scaling, with a test app: the strip and Stop/Resume (Stop pressed through posted messages), a point click and drag on a custom-drawn window, approval questions and undo through an MCP client that answers elicitation, and `launch --isolated` with a test app and Windows 11 Notepad, all without a foreground change by Sidehand.
 

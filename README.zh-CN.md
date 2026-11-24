@@ -86,12 +86,22 @@ $ sidehand act e12 click
 | `tree <标题>` | 以文本列出窗口中的控件，每个带一个 ref（`e4`） |
 | `act <ref> <动作> [值]` | `type`、`click`、`select`、`check`、`press`、`wheel`、`drag` 等 |
 | `ocr <标题>` | 用 Windows OCR 读取自绘窗口（游戏、Qt、画布）中的文字，带可供 `act` 点击的 ref（`t1`） |
+| `act @x,y <动作>` | 点击、拖动或滚动上一次 `capture window` 图像中的任意像素：图标、画布、3D 视图 |
 | `wait <标题> <文字>` | 等待包含该文字的控件出现（或用 `--gone` 等它消失） |
-| `window`、`launch` | 移动、调整大小、恢复或关闭窗口；启动应用且不抢焦点 |
+| `window`、`launch` | 移动、调整大小、恢复或关闭窗口；启动应用且不抢焦点（`--isolated` 为实验功能，在一个不显示的独立桌面上启动） |
+| `log` | 本地操作记录中最近的操作 |
 | `capture`、`mask` | 给被遮住的窗口截图；用黑块、像素化或模糊遮盖区域 |
 | `doctor` | 检查环境 |
 
-MCP 和 pi 以工具形式提供同样的功能（`ui_tree`、`ui_ocr`、`ui_act` 等）。全部命令和选项见 [docs/usage.md](docs/usage.md)（英文）。
+MCP 和 pi 以工具形式提供同样的功能（`ui_tree`、`ui_ocr`、`ui_act` 等），另有 `ui_undo`，可撤销智能体最近改动的文字、复选框或选择。全部命令和选项见 [docs/usage.md](docs/usage.md)（英文）。
+
+### 由你掌控
+
+- 智能体第一次操作某个应用前，由你选择不允许、仅本次允许、始终允许或始终阻止。删除、发送、支付等按钮以及关闭窗口会再次询问（支持 elicitation 的 MCP 客户端和 pi）。
+- 操作期间，屏幕角落的小条会显示它正在做什么。按 Stop（或 Ctrl+Alt+Pause）会让所有智能体停下，直到你按 Resume。小条不会抢焦点。
+- 每个操作都记录在 `%LOCALAPPDATA%\sidehand\actions.log`，不记录输入的文字。
+
+详细设置见 [docs/setup.md](docs/setup.md#approvals)（英文）。
 
 ### 隐藏截图中的隐私信息
 
@@ -131,6 +141,7 @@ $ sidehand mask shot.png "170,185,180,26;170,331,256,22" --style pixelate
 ## 安全
 
 Sidehand 从其他窗口读到的文字会交给你的智能体，请像对待网页内容一样对待它：网页或消息可能试图向智能体下指令。
+看起来像这类指令的行会标上 ⚠。这只能识别常见说法，并不能拦住所有攻击。
 `SIDEHAND_ALLOW` 可以限制它能看到的窗口；它传给 PowerShell 的每个字符串都会加引号，否则直接拒绝。
 
 ## 许可证
