@@ -126,7 +126,8 @@ $isOurs = {
   $h = [SidehandNative]::GetForegroundWindow(); $p = [uint32]0; [void][SidehandNative]::GetWindowThreadProcessId($h, [ref]$p)
   $p -ne 0 -and ($p -eq $appPid -or ((Get-Process -Id $p -ErrorAction SilentlyContinue).Path -eq $appPath))
 }
-$findNew = { Get-WindowList | Where-Object { $before -notcontains $_.Handle -and ($appPid -eq 0 -or $_.ProcessId -eq $appPid) } | Select-Object -First 1 }
+# On the private isolated desktop any new window is the launched app's (a stub such as notepad.exe shows none of its own).
+$findNew = { Get-WindowList | Where-Object { $before -notcontains $_.Handle -and ($appPid -eq 0 -or $env:SIDEHAND_ISOLATED -or $_.ProcessId -eq $appPid) } | Select-Object -First 1 }
 # Every top-level window on this process's desktop, shown or not (for isolated.ps1's desktop, SIDEHAND_ISOLATED).
 function Get-DesktopWindows {
   $all = New-Object System.Collections.Generic.List[IntPtr]
@@ -213,6 +214,7 @@ try {
       Show-Activity "launch $Value"
       $before = @(Get-WindowList | ForEach-Object { $_.Handle })
       $fg = New-Object 'SidehandUia+Foreground'
+      $launchStart = Get-Date
       $appPid = $logPid = [SidehandUia]::Launch($Value, $Arguments)
       $new = $null
       $gaveBack = [SidehandUia]::LaunchGaveBack -gt 0
@@ -226,7 +228,9 @@ try {
         try { Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Op', 'watch' }
         finally { Remove-Item Env:SIDEHAND_LAUNCH_WATCH }
       }
-      for ($i = 0; $i -lt 20 -and -not $new; $i++) {
+      # A packaged app (Windows 11 Notepad) on a fresh hidden desktop took about 15 s to show its window.
+      $tries = if ($env:SIDEHAND_ISOLATED) { 40 } else { 20 }
+      for ($i = 0; $i -lt $tries -and -not $new; $i++) {
         if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
         $new = & $findNew
         if (-not $new) { Start-Sleep -Milliseconds 500 }
@@ -236,9 +240,10 @@ try {
           # A single-instance app (Edge, Office, ...) passes the request to its running instance and exits.
           $here = @(Get-DesktopWindows | ForEach-Object { $p = [uint32]0; [void][SidehandNative]::GetWindowThreadProcessId($_, [ref]$p); $p })
           $exe = [IO.Path]::GetFileNameWithoutExtension($appPath)
-          $outside = @(Get-Process -Name $exe -ErrorAction SilentlyContinue | Where-Object { $here -notcontains $_.Id })
+          # Only an instance that ran before this launch: a stub's own child (notepad.exe starts the packaged Notepad) is not one.
+          $outside = @(Get-Process -Name $exe -ErrorAction SilentlyContinue | Where-Object { $here -notcontains $_.Id -and $(try { $_.StartTime -lt $launchStart } catch { $true }) })
           if ($outside.Count) { throw "not isolated: no window of $Value opened on the isolated desktop. $exe is already running outside it (pid $(($outside | ForEach-Object Id) -join ', ')): a single-instance app hands the request to that instance, so its window may be on the user's screen" }
-          throw "not isolated: no window of $Value opened on the isolated desktop in 10 s (pid $appPid); if it is still starting, list_windows shows it later tagged [isolated]"
+          throw "not isolated: no window of $Value opened on the isolated desktop in 20 s (pid $appPid); if it is still starting, list_windows shows it later tagged [isolated]"
         }
         $logHwnd = $new.Handle
         "ok launched on the isolated desktop: $($new.Title) ($('0x{0:X8}' -f $new.Handle.ToInt64()))`nnote: it never shows on the user's screen; read it with tree, see it with capture window"

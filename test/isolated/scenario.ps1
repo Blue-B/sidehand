@@ -360,7 +360,8 @@ function IsoCase([string]$label, [scriptblock]$run, [scriptblock]$check) {
   $out = "$(& $run)"; $ms = $sw.ElapsedMilliseconds
   Start-Sleep -Milliseconds 300
   if (& $check) { Add-Content -Encoding UTF8 $isoLog "$(Tick)`ttarget`tisolated ok" }
-  $results.Add([pscustomobject]@{ n = 0; tool = 'sidehand'; app = 'Isolated'; label = $label; expect = 'isolated ok'; t0 = $t0; t1 = (Tick); ms = $ms; log = $isoLog; output = $out.Trim() })
+  # +1: the clock ticks every ~15 ms, so the "isolated ok" line can carry the same time as t1 (an open end).
+  $results.Add([pscustomobject]@{ n = 0; tool = 'sidehand'; app = 'Isolated'; label = $label; expect = 'isolated ok'; t0 = $t0; t1 = (Tick) + 1; ms = $ms; log = $isoLog; output = $out.Trim() })
 }
 function Mine { @(Get-Process TestWinForms, TestWpf -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$Work\*" }) }
 $psi = New-Object System.Diagnostics.ProcessStartInfo 'powershell.exe', "-NoProfile -ExecutionPolicy Bypass -File `"$iso`" -Op worker"
