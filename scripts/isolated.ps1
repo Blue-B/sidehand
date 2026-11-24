@@ -98,20 +98,27 @@ $ps = "`"$PSHOME\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -NonInterac
 $env:SIDEHAND_ISOLATED = $name
 # Stop and the activity indicator there are those of the user's desktop (uia.ps1).
 $env:SIDEHAND_HOME_DESKTOP = [SidehandNative]::DesktopName()
+# shortcut: ends the processes that own a window there (and their child processes); a windowless
+# process started there without a parent that had one keeps running. Processes that also have a
+# window on this desktop (shared ones such as the shell) are left alone.
+function Close-Desktop {
+  $mine = [SidehandIsolated]::Pids([IntPtr]::Zero)
+  $pids = @([SidehandIsolated]::Pids($desk) | Where-Object { $mine -notcontains $_ -and $_ -ne $PID })
+  foreach ($p in $pids) { & taskkill.exe /F /T /PID $p 2>&1 | Out-Null }
+  $pids.Count
+}
 switch ($Op) {
-  'worker' { exit [SidehandIsolated]::Run($name, "$ps -File `"$PSScriptRoot\worker.ps1`"", $true) }
+  'worker' {
+    $code = [SidehandIsolated]::Run($name, "$ps -File `"$PSScriptRoot\worker.ps1`"", $true)
+    # The job ends what the worker started; an app Windows started for it (packaged apps such as Notepad,
+    # COM servers) is no child of the worker, and would keep the desktop and take the user's next windows.
+    [void](Close-Desktop)
+    exit $code
+  }
   'run' {
     # Through the environment, so nothing is quoted again.
     $env:SIDEHAND_RUN = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $Command"
     exit [SidehandIsolated]::Run($name, "$ps -Command `"& ([ScriptBlock]::Create(`$env:SIDEHAND_RUN))`"", $false)
   }
-  'close' {
-    # shortcut: ends the processes that own a window there (and their child processes); a windowless
-    # process started there without a parent that had one keeps running. Processes that also have a
-    # window on this desktop (shared ones such as the shell) are left alone.
-    $mine = [SidehandIsolated]::Pids([IntPtr]::Zero)
-    $pids = @([SidehandIsolated]::Pids($desk) | Where-Object { $mine -notcontains $_ -and $_ -ne $PID })
-    foreach ($p in $pids) { & taskkill.exe /F /T /PID $p 2>&1 | Out-Null }
-    "ok closed the isolated desktop: ended $($pids.Count) app process(es)"
-  }
+  'close' { "ok closed the isolated desktop: ended $(Close-Desktop) app process(es)" }
 }

@@ -32,6 +32,8 @@ function answer(iso, cmd) {
   if (/-Op launch/.test(cmd)) return { out: iso ? "ok launched on the isolated desktop: Agent app (0x2)" : "ok launched: Notes" };
   if (/-Op tree/.test(cmd)) return title === (iso ? "Agent app" : "Notes") ? { out: "window: " + title + (iso ? " (isolated)" : " (main)") } : miss;
   if (/-Ref '+e1/.test(cmd)) return iso ? { code: 1, err: "the window of these refs is not on the isolated desktop" } : { out: "ok click (main)" };
+  if (/-Op undo/.test(cmd)) return { out: "ok undo (" + (iso ? "isolated" : "main") + ")" };
+  if (/-Ref '+e8/.test(cmd)) return iso ? { out: "ok type (isolated)" } : { code: 1, err: "unexpected main e8" };
   if (/-Ref '+e9/.test(cmd)) return iso ? { code: 1, err: "element gone" } : { out: "ok click (main)" };
   return { code: 1, err: "unexpected " + cmd };
 }
@@ -98,11 +100,18 @@ n = calls().length;
 r = await tool("ui_act", { ref: "e9", action: "click" });
 assert.ok(r.error && /element gone/.test(r.text), r.text);
 assert.deepEqual(since(n), ["isolated"], "a real failure on the isolated desktop is not retried on the user's");
+// Undo goes to the desktop whose worker made the change it puts back, latest first.
+r = await tool("ui_act", { ref: "e8", action: "type", value: "a" });
+assert.equal(r.text, "ok type (isolated)");
+r = await tool("ui_act", { ref: "e1", action: "type", value: "b" });
+assert.equal(r.text, "ok click (main)");
+assert.equal((await tool("ui_undo", {})).text, "ok undo (main)");
+assert.equal((await tool("ui_undo", {})).text, "ok undo (isolated)");
 r = await tool("launch", { app: "notes.exe" });
 assert.equal(r.text, "ok launched: Notes");
 mcp.stdin.end();
 await new Promise((done) => mcp.on("exit", done));
-console.log("ok: MCP routes to the isolated worker only after launch --isolated, isolated first, user's desktop on a miss");
+console.log("ok: MCP routes to the isolated worker only after launch --isolated, isolated first, user's desktop on a miss, undo where the change was");
 
 // CLI: a marker file keeps the isolated route on between calls.
 const cli = (...a) => spawnSync(process.execPath, [bin, ...a], { env, encoding: "utf8" });

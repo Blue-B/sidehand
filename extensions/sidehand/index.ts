@@ -292,15 +292,13 @@ export default function sidehand(pi: ExtensionAPI): void {
 		execute: async (_id, p, signal) => {
 			// Point refs are pixels of the image the model sees: image() downscales it only with ffmpeg.
 			const shownMaxEdge = p.return_image !== false && process.env.SIDEHAND_NO_DOWNSCALE !== "1" && ffmpeg() ? EMBED_MAX_EDGE : undefined;
-			const r = reply(
-				await cmd.capture(
-					{ mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out, shownMaxEdge },
-					signal,
-				),
-				p.return_image !== false,
+			const cap = await cmd.capture(
+				{ mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h, monitor: p.monitor, title: p.title, bringToFront: p.bring_to_front, out: p.out, shownMaxEdge },
+				signal,
 			);
-			// image() fell back to the full-size PNG: the point refs assume the downscaled size.
-			if (shownMaxEdge && p.mode === "window" && r.content.some((c) => c.type === "image" && c.mimeType === "image/png"))
+			const r = reply(cap, p.return_image !== false);
+			// image() fell back to the full-size PNG while the point refs assume a downscaled one.
+			if (cap.details.shown_w && cap.details.shown_w !== cap.details.w && r.content.some((c) => c.type === "image" && c.mimeType === "image/png"))
 				r.content.push({ type: "text", text: "WARNING: downscaling failed, so this image is shown at full size and point refs (@x,y) on it would land off; do not act on points of it." });
 			return r;
 		},

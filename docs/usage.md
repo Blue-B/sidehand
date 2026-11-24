@@ -92,6 +92,7 @@ Lifetime:
 Limits:
 
 - A single-instance app that is already running on your desktop (Edge with your profile, Office, many UWP apps) hands the request to that instance, so its window opens on your screen, not the hidden desktop. `launch --isolated` then fails with `not isolated` and names the running process. Start such apps with their own profile (`msedge --user-data-dir=...`) or close them first.
+- The other way round: while such an app runs on the hidden desktop, windows you open of it yourself may open there, unseen (Windows 11 Notepad does this). So browsers are refused there without a profile of their own (`--user-data-dir`, Firefox `-profile`), and Office is refused. `isolated close`, or the end of the MCP or pi session, ends them.
 - URLs and documents open in whatever app is registered for them, with the same limit.
 - WPF windows capture blank there (their content is drawn only on a shown desktop), so `capture` and `ocr` show only the title bar; `tree` and `act` work. Win32, WinForms and Edge capture fine.
 - It is not a fix for apps that take your focus on your own desktop, and not a sandbox: the apps run as you, with your files and network.

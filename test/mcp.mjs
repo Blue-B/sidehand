@@ -166,7 +166,7 @@ if (process.platform !== "win32") {
 			`  const r = JSON.parse(l); fs.appendFileSync(${JSON.stringify(log)}, r.cmd + "\\n");\n` +
 			`  const ref = (r.cmd.match(/-Ref '(\\w+)'/) || [])[1];\n` +
 			`  const launched = (r.cmd.match(/-Op target -Value '(\\w+)'/) || [])[1];\n` +
-			`  const out = !/-Op target/.test(r.cmd) ? "ok ran" : JSON.stringify(launched ? { app: launched + ".exe" } : { app: "notes.exe", window: "Notes", ...(ref && { type: "button", control: ref === "e2" ? "Delete" : "Apply" }) });\n` +
+			`  const out = !/-Op target/.test(r.cmd) ? "ok ran" : JSON.stringify(/ -Set/.test(r.cmd) ? { app: "clipboard" } : launched ? { app: launched + ".exe" } : { app: "notes.exe", window: "Notes", ...(ref && { type: "button", control: ref === "e2" ? "Delete" : "Apply" }) });\n` +
 			`  process.stdout.write(JSON.stringify({ id: r.id, code: 0, out, err: "" }) + "\\n");\n});\n`,
 	);
 	chmodSync(join(dir, "powershell.exe"), 0o755);
@@ -270,7 +270,27 @@ if (process.platform !== "win32") {
 	r = (await s.next((m) => m.id === 7, "the reply")).result;
 	assert.ok(r.isError && /not run/.test(r.content[0].text), JSON.stringify(r));
 	assert.equal(ran(), before);
-	console.log("ok: elicitation accept/decline/cancel, Allow once for the session, sensitive actions confirmed");
+	// The client cancels the call while its question is open: the question is withdrawn and the next call runs.
+	s = server({ elicitation: {} });
+	await s.ready;
+	s.send({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "ui_act", arguments: click("e1") } });
+	const q = await s.next((m) => m.method === "elicitation/create", "the question");
+	s.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 8 } });
+	const withdrawn = await s.next((m) => m.method === "notifications/cancelled", "the question withdrawn");
+	assert.equal(withdrawn.params.requestId, q.id);
+	r = await s.call("ui_tree", { title: "Notes" });
+	assert.equal(r.content[0].text, "ok ran", "the next call is not stuck behind the cancelled one");
+	assert.equal(ran(), before, "the cancelled call never acts");
+	await s.close();
+	// A launch with arguments shows them; the clipboard question goes through the lookup that Stop refuses.
+	s = server({ elicitation: {} });
+	await s.ready;
+	r = await s.call("launch", { app: "notes", args: "-c evil" }, pick("Don't allow"));
+	assert.match(r.questions[0].message, /launch notes with the arguments -c evil \(notes\.exe\)/);
+	r = await s.call("clipboard", { text: "x" }, pick("Don't allow"));
+	assert.match(readFileSync(log, "utf8"), /-Op target -Set/);
+	await s.close();
+	console.log("ok: elicitation accept/decline/cancel, Allow once for the session, sensitive actions confirmed, a cancelled question is withdrawn");
 
 	// Always allow is saved and holds in the next session; a sensitive first action is one question, not two.
 	s = server({ elicitation: { form: {} } });
@@ -285,6 +305,10 @@ if (process.platform !== "win32") {
 	await s.ready;
 	r = await s.call("ui_act", click("e1"));
 	assert.equal(r.content[0].text, "ok ran", "Always allow persisted");
+	// An allowed app is still confirmed when launched with arguments or by path.
+	r = await s.call("launch", { app: "notes", args: "-x" }, pick("No"));
+	assert.ok(r.isError && r.questions.length === 1, JSON.stringify(r));
+	assert.deepEqual(r.questions[0].requestedSchema.properties.choice.enum, ["Yes", "No"]);
 	r = await s.call("clipboard", { text: "x" }, pick("Always block"));
 	assert.ok(r.isError);
 	assert.match(r.questions[0].message, /replace your clipboard/);
@@ -300,6 +324,14 @@ if (process.platform !== "win32") {
 		assert.ok(r.isError && /Always block for clipboard/.test(r.content[0].text), r.content[0].text);
 		await s.close();
 	}
+	// An approvals.json that does not parse refuses instead of dropping the user's blocks.
+	writeFileSync(join(config, "approvals.json"), "{ broken");
+	s = server({ elicitation: {} });
+	await s.ready;
+	r = await s.call("ui_act", click("e1"));
+	assert.ok(r.isError && /is not valid JSON/.test(r.content[0].text), r.content[0].text);
+	await s.close();
+	assert.equal(readFileSync(join(config, "approvals.json"), "utf8"), "{ broken", "left as it was");
 	writeFileSync(join(config, "approvals.json"), JSON.stringify({ allow: ["notes.exe"], block: [] }));
 
 	// strict: what needs the user is refused when the client cannot ask; an Always-allowed app still works.

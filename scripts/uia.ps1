@@ -63,7 +63,14 @@ trap { if ($acting) { Write-OpLog $_.Exception.Message }; break }
 
 function Find-Window {
   if (-not $Title) { throw "$Op requires -Title" }
-  Select-Window $Title
+  # Not found on the isolated desktop is no failed action: the worker of the user's desktop takes the call.
+  try { Select-Window $Title } catch { if ($env:SIDEHAND_ISOLATED -and "$_" -match 'no visible window matches') { $script:acting = $false }; throw }
+}
+# The program a launch starts: for a URL or a document the one registered for it, else the value itself.
+function Resolve-LaunchExe([string]$v) {
+  $assoc = if ($v -match '^([a-z][a-z0-9+.-]+):') { $Matches[1] } else { try { [IO.Path]::GetExtension($v) } catch { '' } }
+  if ($assoc -and $assoc -ne '.exe') { return @([SidehandUia]::AssocExe($assoc), $assoc) }
+  @($v, $assoc)
 }
 
 # Stop and the activity indicator: state shared by every Sidehand process on this desktop (the
@@ -98,6 +105,8 @@ function Show-Activity([string]$what) {
 }
 function End-Activity { if ($activity) { try { [IO.File]::SetLastWriteTimeUtc($activityPath, [DateTime]::UtcNow) } catch {} } }
 # target (the approval lookup before an act) too, so a stopped agent never puts a question to the user.
+# The worker keeps the last act's window and control: a refusal here must not be logged with them.
+if ('SidehandUia' -as [type]) { [SidehandUia]::LastWindow = [IntPtr]::Zero; [SidehandUia]::LastTarget = $null }
 if (($acting -or $Op -eq 'target') -and (Test-Path -LiteralPath $stopPath)) {
   Start-Indicator # it may have been closed; the user needs its Resume
   throw 'The user pressed Stop in Sidehand. Ask the user before doing anything else.'
@@ -212,6 +221,12 @@ try {
       Assert-Unrestricted 'launching apps'
       if (-not $Value) { throw "launch requires -Value" }
       Show-Activity "launch $Value"
+      if ($env:SIDEHAND_ISOLATED) {
+        # One instance per user: started here, it would also take the windows the user opens later.
+        $exe = [IO.Path]::GetFileNameWithoutExtension("$((Resolve-LaunchExe $Value)[0])").ToLower()
+        if ($exe -in 'msedge', 'chrome', 'brave', 'firefox' -and $Arguments -notmatch '--user-data-dir|-profile\b') { throw "not isolated: $exe would run your own browser profile on the hidden desktop, and browser windows you open yourself would then open there; pass a profile of its own (--user-data-dir=<folder>, Firefox: -profile <folder>)" }
+        if ($exe -in 'winword', 'excel', 'powerpnt', 'outlook', 'onenote') { throw "not isolated: Office runs one instance per user, so documents you open yourself would open on the hidden desktop" }
+      }
       $before = @(Get-WindowList | ForEach-Object { $_.Handle })
       $fg = New-Object 'SidehandUia+Foreground'
       $launchStart = Get-Date
@@ -246,7 +261,7 @@ try {
           throw "not isolated: no window of $Value opened on the isolated desktop in 20 s (pid $appPid); if it is still starting, list_windows shows it later tagged [isolated]"
         }
         $logHwnd = $new.Handle
-        "ok launched on the isolated desktop: $($new.Title) ($('0x{0:X8}' -f $new.Handle.ToInt64()))`nnote: it never shows on the user's screen; read it with tree, see it with capture window"
+        "ok launched on the isolated desktop: $($new.Title) ($('0x{0:X8}' -f $new.Handle.ToInt64()))`nnote: it never shows on the user's screen; read it with tree, see it with capture window`nnote: until it ends, an app that keeps one instance (Windows 11 Notepad does) may open the windows the user opens of it here, unseen; isolated close ends it"
       } else {
         if ((& $isOurs) -and $fg.GiveBack($true)) { $gaveBack = $true }
         $name = if ($new) { $logHwnd = $new.Handle; $new.Title } else { $Value }
@@ -271,7 +286,7 @@ try {
     'target' {
       # For the approval prompts of the MCP server and the pi extension (lib/approve.mjs).
       $t = @{}
-      if ($Ref) {
+      if ($Set) { $t.app = 'clipboard' } elseif ($Ref) {
         # A point (@x,y) names no control; its window is the one of the last capture.
         if ($Ref -like '@*') {
           if (-not (Test-Path $SidehandPointsPath)) { throw "no window capture to take point refs from; capture the window (mode window) first" }
@@ -283,14 +298,13 @@ try {
         $sb = New-Object System.Text.StringBuilder 512; [void][SidehandNative]::GetWindowText($h, $sb, $sb.Capacity); $t.window = "$sb"
         $procId = [uint32]0; [void][SidehandNative]::GetWindowThreadProcessId($h, [ref]$procId)
       } elseif ($Title) {
-        $w = Find-Window; $t.window = $w.Title; $procId = $w.ProcessId
+        $w = Find-Window; $t.window = $w.Title; $procId = $w.ProcessId; $t.hwnd = '0x{0:X}' -f $w.Handle.ToInt64()
       } else {
         Assert-Unrestricted 'launching apps'
         if (-not $Value) { throw "target requires -Ref, -Title or -Value" }
         # A URL or a document starts the program registered for it; anything else is the program (notepad, C:\x\app.exe).
         # shortcut: an App Paths alias whose process has another name (calc -> CalculatorApp.exe) is asked for again on its first act.
-        $assoc = if ($Value -match '^([a-z][a-z0-9+.-]+):') { $Matches[1] } else { try { [IO.Path]::GetExtension($Value) } catch { '' } }
-        $exe = if ($assoc -and $assoc -ne '.exe') { [SidehandUia]::AssocExe($assoc) } else { $Value }
+        $exe, $assoc = Resolve-LaunchExe $Value
         $t.app = if ($exe) { [IO.Path]::GetFileNameWithoutExtension($exe).ToLower() + '.exe' } elseif ($assoc -like '.*') { $assoc } else { "${assoc}:" }
       }
       if ($procId) { $t.app = (Get-Process -Id $procId).ProcessName.ToLower() + '.exe' }
