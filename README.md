@@ -15,7 +15,7 @@
 
 <p align="center"><b>English</b> | <a href="README.ko.md">한국어</a> | <a href="README.zh-CN.md">简体中文</a></p>
 
-https://github.com/user-attachments/assets/17bd0eda-6920-493e-8093-5545ffc38259
+https://github.com/user-attachments/assets/478a9769-6333-49dd-843c-7be7e5b0d2a5
 
 ![Three AI agents fill in three apps hidden behind your note at the same time, while you keep typing in it](assets/demo.gif)
 
